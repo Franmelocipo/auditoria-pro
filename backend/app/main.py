@@ -59,6 +59,37 @@ async def options_handler(request: Request):
         }
     )
 
+
+# Exception handler con CORS
+from fastapi import HTTPException
+from fastapi.exceptions import RequestValidationError
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Error interno: {str(exc)}"},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
+
 # Registrar routers
 app.include_router(health.router, tags=["Health"])
 app.include_router(auditoria.router, prefix="/api/auditoria", tags=["Auditoría"])

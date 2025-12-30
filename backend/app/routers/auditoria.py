@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Body
-from supabase import create_client, Client
+from fastapi.responses import JSONResponse
 from typing import Optional, Any
 
 from app.config import get_settings, Settings
@@ -18,8 +18,26 @@ from app.services.procesamiento import (
 router = APIRouter()
 
 
-def get_supabase(settings: Settings = Depends(get_settings)) -> Client:
-    return create_client(settings.supabase_url, settings.supabase_key)
+def get_supabase_client(settings: Settings = Depends(get_settings)):
+    """Retorna cliente Supabase o None si no está configurado"""
+    if not settings.supabase_url or not settings.supabase_key:
+        return None
+    try:
+        from supabase import create_client
+        return create_client(settings.supabase_url, settings.supabase_key)
+    except Exception:
+        return None
+
+
+def require_supabase(settings: Settings = Depends(get_settings)):
+    """Dependencia que requiere Supabase configurado"""
+    client = get_supabase_client(settings)
+    if client is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Base de datos no configurada. Configure SUPABASE_URL y SUPABASE_KEY."
+        )
+    return client
 
 
 @router.get("/conciliaciones", response_model=ConciliacionListResponse)
@@ -27,7 +45,7 @@ async def listar_conciliaciones(
     cliente_id: Optional[int] = Query(None, description="Filtrar por cliente"),
     limit: int = Query(50, le=100),
     offset: int = Query(0, ge=0),
-    supabase: Client = Depends(get_supabase)
+    supabase = Depends(require_supabase)
 ):
     """Lista todas las conciliaciones de mayores guardadas"""
     try:
@@ -51,7 +69,7 @@ async def listar_conciliaciones(
 @router.get("/conciliaciones/{conciliacion_id}", response_model=ConciliacionResponse)
 async def obtener_conciliacion(
     conciliacion_id: int,
-    supabase: Client = Depends(get_supabase)
+    supabase = Depends(require_supabase)
 ):
     """Obtiene una conciliación específica con todos sus datos"""
     try:
@@ -92,7 +110,7 @@ async def obtener_conciliacion(
 @router.post("/conciliaciones")
 async def crear_conciliacion(
     conciliacion: ConciliacionCreate,
-    supabase: Client = Depends(get_supabase)
+    supabase = Depends(require_supabase)
 ):
     """Crea o actualiza una conciliación de mayores"""
     try:
@@ -246,7 +264,7 @@ async def fusionar_grupos(fusion: FusionRequest):
 @router.delete("/conciliaciones/{conciliacion_id}")
 async def eliminar_conciliacion(
     conciliacion_id: int,
-    supabase: Client = Depends(get_supabase)
+    supabase = Depends(require_supabase)
 ):
     """Elimina una conciliacion y sus datos relacionados"""
     try:
@@ -272,7 +290,7 @@ async def eliminar_conciliacion(
 
 @router.get("/clientes")
 async def listar_clientes(
-    supabase: Client = Depends(get_supabase)
+    supabase = Depends(require_supabase)
 ):
     """Lista todos los clientes disponibles"""
     try:

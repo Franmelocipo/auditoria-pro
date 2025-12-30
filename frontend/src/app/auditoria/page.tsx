@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { Save, FolderOpen, Trash2, RefreshCw } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Save, FolderOpen, Trash2, RefreshCw, User } from 'lucide-react'
 import { ExcelUploader } from '@/components/auditoria/ExcelUploader'
 import { AgrupacionesList } from '@/components/auditoria/AgrupacionesList'
 import { Estadisticas } from '@/components/auditoria/Estadisticas'
@@ -10,9 +10,19 @@ import { useAuditoriaStore } from '@/stores/auditoriaStore'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
+interface Cliente {
+  id: number
+  nombre: string
+  cuit?: string
+}
+
 export default function AuditoriaPage() {
   const [saving, setSaving] = useState(false)
   const [nombreConciliacion, setNombreConciliacion] = useState('')
+  const [clientes, setClientes] = useState<Cliente[]>([])
+  const [clienteId, setClienteId] = useState<number | null>(null)
+  const [loadingClientes, setLoadingClientes] = useState(false)
+  const [dbConfigured, setDbConfigured] = useState(true)
 
   const {
     registros,
@@ -26,9 +36,40 @@ export default function AuditoriaPage() {
 
   const tieneData = registros.length > 0 || agrupaciones.length > 0
 
+  // Cargar clientes al montar
+  useEffect(() => {
+    const fetchClientes = async () => {
+      setLoadingClientes(true)
+      try {
+        const response = await fetch(`${API_URL}/api/auditoria/clientes`)
+        if (response.status === 503) {
+          // DB no configurada
+          setDbConfigured(false)
+          return
+        }
+        if (response.ok) {
+          const data = await response.json()
+          setClientes(data.clientes || [])
+          setDbConfigured(true)
+        }
+      } catch (err) {
+        console.error('Error cargando clientes:', err)
+        setDbConfigured(false)
+      } finally {
+        setLoadingClientes(false)
+      }
+    }
+    fetchClientes()
+  }, [])
+
   const handleGuardar = async () => {
     if (!nombreConciliacion.trim()) {
       setError('Ingresa un nombre para la conciliacion')
+      return
+    }
+
+    if (!dbConfigured) {
+      setError('La base de datos no está configurada. Contacte al administrador.')
       return
     }
 
@@ -41,6 +82,7 @@ export default function AuditoriaPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nombre: nombreConciliacion,
+          cliente_id: clienteId,
           registros: registros,
           agrupaciones: agrupaciones.map(a => ({
             ...a,
@@ -86,6 +128,25 @@ export default function AuditoriaPage() {
 
         {tieneData && (
           <div className="flex items-center gap-3">
+            {/* Selector de cliente */}
+            <select
+              value={clienteId || ''}
+              onChange={(e) => setClienteId(e.target.value ? Number(e.target.value) : null)}
+              className="px-3 py-2 border rounded-lg text-sm w-48"
+              disabled={loadingClientes || !dbConfigured}
+            >
+              <option value="">
+                {!dbConfigured ? 'DB no configurada' :
+                 loadingClientes ? 'Cargando...' :
+                 '-- Seleccionar cliente --'}
+              </option>
+              {clientes.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre}
+                </option>
+              ))}
+            </select>
+
             <input
               type="text"
               placeholder="Nombre de la conciliacion..."
@@ -95,7 +156,7 @@ export default function AuditoriaPage() {
             />
             <button
               onClick={handleGuardar}
-              disabled={saving}
+              disabled={saving || !dbConfigured}
               className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
