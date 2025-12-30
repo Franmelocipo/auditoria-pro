@@ -25,24 +25,11 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configurar CORS
-origins = [
-    settings.frontend_url,
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://auditoria-pro.vercel.app",
-    "https://auditoria-pro-franmelocipo.vercel.app",
-    "https://auditoria-pro-git-main-franmelocipo.vercel.app",
-]
-
-# Agregar cualquier subdominio de vercel.app
-if settings.debug:
-    origins.append("*")
-
+# Configurar CORS - permitir todos los orígenes por ahora
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
