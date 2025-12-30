@@ -7,7 +7,7 @@ class ConciliacionCreate(BaseModel):
     """Datos para crear o actualizar una conciliación"""
     id: Optional[int] = None
     nombre: str
-    cliente_id: Optional[int] = None
+    cliente_id: Optional[str] = None
     registros: Optional[List[Any]] = []  # Flexible para aceptar cualquier estructura
     agrupaciones: Optional[List[Any]] = []  # Flexible para aceptar cualquier estructura
 
@@ -19,7 +19,7 @@ class ConciliacionResponse(BaseModel):
     """Respuesta con datos de una conciliación"""
     id: int
     nombre: str
-    cliente_id: Optional[int] = None
+    cliente_id: Optional[str] = None
     fecha_creacion: Optional[datetime] = None
     fecha_modificacion: Optional[datetime] = None
     registros_count: Optional[int] = 0
@@ -37,7 +37,7 @@ class ConciliacionListItem(BaseModel):
     """Item resumido para listados"""
     id: int
     nombre: str
-    cliente_id: Optional[int] = None
+    cliente_id: Optional[str] = None
     fecha_creacion: Optional[datetime] = None
     fecha_modificacion: Optional[datetime] = None
     registros_count: Optional[int] = 0

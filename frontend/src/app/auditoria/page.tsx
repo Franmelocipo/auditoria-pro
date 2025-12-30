@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Save, FolderOpen, Trash2, RefreshCw, User, ChevronRight } from 'lucide-react'
+import { Save, FolderOpen, Trash2, RefreshCw, User, ChevronRight, Plus, FileSpreadsheet, Calendar } from 'lucide-react'
 import { ExcelUploader } from '@/components/auditoria/ExcelUploader'
 import { AgrupacionesList } from '@/components/auditoria/AgrupacionesList'
 import { Estadisticas } from '@/components/auditoria/Estadisticas'
@@ -11,20 +11,35 @@ import { useAuditoriaStore } from '@/stores/auditoriaStore'
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 interface Cliente {
-  id: number
+  id: string
   nombre: string
   cuit?: string
+}
+
+interface ConciliacionItem {
+  id: number
+  nombre: string
+  fecha_creacion: string
+  fecha_modificacion: string
+  registros_count: number
+  agrupaciones_count: number
 }
 
 export default function AuditoriaPage() {
   const [saving, setSaving] = useState(false)
   const [nombreConciliacion, setNombreConciliacion] = useState('')
+  const [conciliacionId, setConciliacionId] = useState<number | null>(null)
   const [clientes, setClientes] = useState<Cliente[]>([])
-  const [clienteId, setClienteId] = useState<number | null>(null)
+  const [clienteId, setClienteId] = useState<string | null>(null)
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null)
   const [loadingClientes, setLoadingClientes] = useState(false)
   const [dbConfigured, setDbConfigured] = useState(true)
   const [dbError, setDbError] = useState<string | null>(null)
+
+  // Estado para conciliaciones guardadas
+  const [conciliaciones, setConciliaciones] = useState<ConciliacionItem[]>([])
+  const [loadingConciliaciones, setLoadingConciliaciones] = useState(false)
+  const [modoNuevo, setModoNuevo] = useState(false)
 
   const {
     registros,
@@ -33,7 +48,11 @@ export default function AuditoriaPage() {
     loading,
     error,
     limpiar,
-    setError
+    setError,
+    setRegistros,
+    setAgrupaciones,
+    setSinAsignar,
+    setLoading
   } = useAuditoriaStore()
 
   const tieneData = registros.length > 0 || agrupaciones.length > 0
@@ -56,7 +75,7 @@ export default function AuditoriaPage() {
         setDbConfigured(true)
       } catch (err) {
         console.error('Error cargando clientes:', err)
-        setDbError('Error de conexión')
+        setDbError('Error de conexion')
         setDbConfigured(false)
       } finally {
         setLoadingClientes(false)
@@ -65,18 +84,82 @@ export default function AuditoriaPage() {
     fetchClientes()
   }, [])
 
-  const handleSeleccionarCliente = (id: number) => {
+  // Cargar conciliaciones cuando se selecciona un cliente
+  useEffect(() => {
+    if (!clienteId) {
+      setConciliaciones([])
+      return
+    }
+
+    const fetchConciliaciones = async () => {
+      setLoadingConciliaciones(true)
+      try {
+        const response = await fetch(`${API_URL}/api/auditoria/conciliaciones?cliente_id=${clienteId}`)
+        if (response.ok) {
+          const data = await response.json()
+          setConciliaciones(data.conciliaciones || [])
+        }
+      } catch (err) {
+        console.error('Error cargando conciliaciones:', err)
+      } finally {
+        setLoadingConciliaciones(false)
+      }
+    }
+    fetchConciliaciones()
+  }, [clienteId])
+
+  const handleSeleccionarCliente = (id: string) => {
     const cliente = clientes.find(c => c.id === id)
     if (cliente) {
       setClienteId(id)
       setClienteSeleccionado(cliente)
+      setModoNuevo(false)
+      limpiar()
     }
   }
 
   const handleCambiarCliente = () => {
     setClienteSeleccionado(null)
     setClienteId(null)
+    setConciliaciones([])
+    setModoNuevo(false)
+    setConciliacionId(null)
+    setNombreConciliacion('')
     limpiar()
+  }
+
+  const handleNuevaConciliacion = () => {
+    setModoNuevo(true)
+    setConciliacionId(null)
+    setNombreConciliacion('')
+    limpiar()
+  }
+
+  const handleCargarConciliacion = async (id: number) => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const response = await fetch(`${API_URL}/api/auditoria/conciliaciones/${id}`)
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.detail || 'Error al cargar conciliacion')
+      }
+
+      const data = await response.json()
+
+      setConciliacionId(id)
+      setNombreConciliacion(data.nombre || '')
+      setRegistros(data.registros || [])
+      setAgrupaciones(data.agrupaciones || [])
+      setSinAsignar([]) // Las conciliaciones guardadas no tienen sin_asignar separado
+      setModoNuevo(false)
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al cargar')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleGuardar = async () => {
@@ -86,7 +169,7 @@ export default function AuditoriaPage() {
     }
 
     if (!dbConfigured) {
-      setError('La base de datos no está configurada. Contacte al administrador.')
+      setError('La base de datos no esta configurada. Contacte al administrador.')
       return
     }
 
@@ -98,6 +181,7 @@ export default function AuditoriaPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          id: conciliacionId, // Si existe, actualiza; si no, crea nuevo
           nombre: nombreConciliacion,
           cliente_id: clienteId,
           registros: registros,
@@ -114,7 +198,22 @@ export default function AuditoriaPage() {
       }
 
       const data = await response.json()
-      alert(`Conciliacion guardada con ID: ${data.id}`)
+
+      // Actualizar ID si es nueva
+      if (!conciliacionId) {
+        setConciliacionId(data.id)
+      }
+
+      // Recargar lista de conciliaciones
+      if (clienteId) {
+        const listResponse = await fetch(`${API_URL}/api/auditoria/conciliaciones?cliente_id=${clienteId}`)
+        if (listResponse.ok) {
+          const listData = await listResponse.json()
+          setConciliaciones(listData.conciliaciones || [])
+        }
+      }
+
+      alert(`Conciliacion guardada correctamente`)
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al guardar')
@@ -127,7 +226,20 @@ export default function AuditoriaPage() {
     if (confirm('Estas seguro de limpiar todos los datos?')) {
       limpiar()
       setNombreConciliacion('')
+      setConciliacionId(null)
+      setModoNuevo(false)
     }
+  }
+
+  const formatFecha = (fecha: string) => {
+    if (!fecha) return ''
+    return new Date(fecha).toLocaleDateString('es-AR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
   }
 
   return (
@@ -242,9 +354,91 @@ export default function AuditoriaPage() {
         </div>
       )}
 
-      {/* PASO 2: Cargar Excel (solo si hay cliente seleccionado) */}
-      {clienteSeleccionado && !tieneData && (
-        <div className="max-w-xl mx-auto py-12">
+      {/* PASO 2: Seleccionar conciliacion existente o crear nueva */}
+      {clienteSeleccionado && !tieneData && !modoNuevo && (
+        <div className="max-w-2xl mx-auto py-8">
+          <div className="bg-white rounded-lg border p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Conciliaciones de {clienteSeleccionado.nombre}
+              </h2>
+              <button
+                onClick={handleCambiarCliente}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                Cambiar cliente
+              </button>
+            </div>
+
+            {/* Boton nueva conciliacion */}
+            <button
+              onClick={handleNuevaConciliacion}
+              className="w-full flex items-center justify-center gap-2 p-4 border-2 border-dashed border-primary-300 rounded-lg text-primary-600 hover:bg-primary-50 hover:border-primary-400 transition-colors mb-4"
+            >
+              <Plus className="w-5 h-5" />
+              Nueva conciliacion (cargar Excel)
+            </button>
+
+            {/* Lista de conciliaciones existentes */}
+            {loadingConciliaciones ? (
+              <div className="flex items-center justify-center py-8">
+                <RefreshCw className="w-6 h-6 animate-spin text-primary-500" />
+                <span className="ml-2 text-gray-600">Cargando conciliaciones...</span>
+              </div>
+            ) : conciliaciones.length === 0 ? (
+              <p className="text-gray-500 text-center py-4">
+                No hay conciliaciones guardadas para este cliente
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">
+                  Conciliaciones guardadas:
+                </h3>
+                {conciliaciones.map(conc => (
+                  <button
+                    key={conc.id}
+                    onClick={() => handleCargarConciliacion(conc.id)}
+                    className="w-full flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      <FileSpreadsheet className="w-8 h-8 text-green-600" />
+                      <div>
+                        <div className="font-medium text-gray-900">{conc.nombre}</div>
+                        <div className="text-sm text-gray-500 flex items-center gap-4">
+                          <span>{conc.registros_count} registros</span>
+                          <span>{conc.agrupaciones_count} agrupaciones</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-gray-400 flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        {formatFecha(conc.fecha_modificacion)}
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-gray-400 mt-1" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* PASO 2b: Cargar Excel (modo nuevo) */}
+      {clienteSeleccionado && !tieneData && modoNuevo && (
+        <div className="max-w-xl mx-auto py-8">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Nueva conciliacion
+            </h2>
+            <button
+              onClick={() => setModoNuevo(false)}
+              className="text-sm text-gray-500 hover:text-gray-700"
+            >
+              Volver
+            </button>
+          </div>
           <ExcelUploader />
         </div>
       )}
