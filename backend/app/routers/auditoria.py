@@ -1,16 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Body
 from supabase import create_client, Client
-from typing import Optional
-import pandas as pd
-from io import BytesIO
+from typing import Optional, Any
 
 from app.config import get_settings, Settings
 from app.schemas.auditoria import (
     ConciliacionCreate,
     ConciliacionResponse,
     ConciliacionListResponse,
-    RegistroMayor,
-    AgrupacionMayor
+    FusionRequest
+)
+from app.services.procesamiento import (
+    procesar_excel,
+    agrupar_por_razon_social,
+    fusionar_agrupaciones
 )
 
 router = APIRouter()
@@ -112,10 +114,10 @@ async def crear_conciliacion(
         }
 
         if not guardar_registros_separado:
-            data_principal["registros"] = [r.model_dump() for r in registros]
+            data_principal["registros"] = [r.model_dump() if hasattr(r, 'model_dump') else r for r in registros]
 
         if not guardar_agrupaciones_separado:
-            data_principal["agrupaciones"] = [a.model_dump() for a in agrupaciones]
+            data_principal["agrupaciones"] = [a.model_dump() if hasattr(a, 'model_dump') else a for a in agrupaciones]
 
         # Guardar o actualizar
         if conciliacion.id:
@@ -131,7 +133,7 @@ async def crear_conciliacion(
 
         # Guardar registros en tabla auxiliar si es necesario
         if guardar_registros_separado:
-            registros_data = [r.model_dump() for r in registros]
+            registros_data = [r.model_dump() if hasattr(r, 'model_dump') else r for r in registros]
             supabase.table("registros_mayor_detalle").upsert({
                 "conciliacion_id": conciliacion_id,
                 "registros": registros_data
@@ -139,7 +141,7 @@ async def crear_conciliacion(
 
         # Guardar agrupaciones en tabla auxiliar si es necesario
         if guardar_agrupaciones_separado:
-            agrupaciones_data = [a.model_dump() for a in agrupaciones]
+            agrupaciones_data = [a.model_dump() if hasattr(a, 'model_dump') else a for a in agrupaciones]
             supabase.table("agrupaciones_mayor_detalle").upsert({
                 "conciliacion_id": conciliacion_id,
                 "agrupaciones": agrupaciones_data
@@ -148,23 +150,23 @@ async def crear_conciliacion(
         return {
             "success": True,
             "id": conciliacion_id,
-            "message": "Conciliación guardada correctamente",
+            "message": "Conciliacion guardada correctamente",
             "registros_count": len(registros),
             "agrupaciones_count": len(agrupaciones)
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al guardar conciliación: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al guardar conciliacion: {str(e)}")
 
 
 @router.post("/procesar-excel")
-async def procesar_excel(
+async def procesar_archivo_excel(
     archivo: UploadFile = File(...),
-    supabase: Client = Depends(get_supabase)
+    agrupar: bool = Query(True, description="Agrupar automaticamente por razon social")
 ):
     """
     Procesa un archivo Excel con mayores contables.
-    Retorna los registros parseados listos para agrupar.
+    Opcionalmente agrupa por razon social automaticamente.
     """
     try:
         if not archivo.filename.endswith(('.xlsx', '.xls')):
@@ -173,39 +175,28 @@ async def procesar_excel(
         # Leer archivo en memoria
         contenido = await archivo.read()
 
-        # Procesar con Pandas
-        df = pd.read_excel(BytesIO(contenido))
+        # Procesar Excel
+        resultado = procesar_excel(contenido, archivo.filename)
 
-        # Normalizar columnas (minúsculas, sin espacios)
-        df.columns = df.columns.str.strip().str.lower()
+        if agrupar and resultado['registros']:
+            # Agrupar por razon social
+            agrupacion_result = agrupar_por_razon_social(resultado['registros'])
 
-        # Mapeo de columnas comunes
-        columnas_mapping = {
-            'fecha': ['fecha', 'date', 'fec'],
-            'concepto': ['concepto', 'descripcion', 'detalle', 'description'],
-            'debe': ['debe', 'debit', 'debito'],
-            'haber': ['haber', 'credit', 'credito'],
-            'saldo': ['saldo', 'balance'],
-        }
-
-        # Detectar y renombrar columnas
-        columnas_finales = {}
-        for col_standard, opciones in columnas_mapping.items():
-            for opcion in opciones:
-                if opcion in df.columns:
-                    columnas_finales[opcion] = col_standard
-                    break
-
-        df = df.rename(columns=columnas_finales)
-
-        # Convertir a lista de registros
-        registros = df.fillna('').to_dict('records')
+            return {
+                "success": True,
+                "registros": resultado['registros'],
+                "agrupaciones": agrupacion_result['agrupaciones'],
+                "sin_asignar": agrupacion_result['sin_asignar'],
+                "totales": agrupacion_result['totales'],
+                "estadisticas": agrupacion_result['estadisticas'],
+                "columnas": resultado['columnas']
+            }
 
         return {
             "success": True,
-            "registros": registros,
-            "total": len(registros),
-            "columnas_detectadas": list(df.columns)
+            "registros": resultado['registros'],
+            "total": resultado['total'],
+            "columnas": resultado['columnas']
         }
 
     except HTTPException:
@@ -214,12 +205,50 @@ async def procesar_excel(
         raise HTTPException(status_code=500, detail=f"Error al procesar Excel: {str(e)}")
 
 
+@router.post("/agrupar")
+async def agrupar_registros(
+    registros: list[dict] = Body(..., description="Lista de registros a agrupar"),
+    umbral_similitud: float = Query(0.75, ge=0, le=1, description="Umbral de similitud para agrupar")
+):
+    """
+    Agrupa registros por razon social.
+    Util cuando ya tienes los registros y quieres reagrupar.
+    """
+    try:
+        resultado = agrupar_por_razon_social(registros, umbral_similitud)
+        return {
+            "success": True,
+            **resultado
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al agrupar: {str(e)}")
+
+
+@router.post("/fusionar")
+async def fusionar_grupos(fusion: FusionRequest):
+    """
+    Fusiona dos agrupaciones en una sola.
+    La agrupacion destino absorbe a la origen.
+    """
+    try:
+        resultado = fusionar_agrupaciones(
+            fusion.agrupacion_destino,
+            fusion.agrupacion_origen
+        )
+        return {
+            "success": True,
+            "agrupacion": resultado
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al fusionar: {str(e)}")
+
+
 @router.delete("/conciliaciones/{conciliacion_id}")
 async def eliminar_conciliacion(
     conciliacion_id: int,
     supabase: Client = Depends(get_supabase)
 ):
-    """Elimina una conciliación y sus datos relacionados"""
+    """Elimina una conciliacion y sus datos relacionados"""
     try:
         # Eliminar de tablas auxiliares primero
         supabase.table("registros_mayor_detalle").delete().eq(
@@ -230,12 +259,27 @@ async def eliminar_conciliacion(
             "conciliacion_id", conciliacion_id
         ).execute()
 
-        # Eliminar conciliación principal
+        # Eliminar conciliacion principal
         supabase.table("conciliaciones_mayor").delete().eq(
             "id", conciliacion_id
         ).execute()
 
-        return {"success": True, "message": "Conciliación eliminada"}
+        return {"success": True, "message": "Conciliacion eliminada"}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al eliminar: {str(e)}")
+
+
+@router.get("/clientes")
+async def listar_clientes(
+    supabase: Client = Depends(get_supabase)
+):
+    """Lista todos los clientes disponibles"""
+    try:
+        result = supabase.table("clientes").select("id, nombre, cuit").order("nombre").execute()
+        return {
+            "success": True,
+            "clientes": result.data
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al listar clientes: {str(e)}")

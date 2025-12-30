@@ -78,3 +78,9 @@ class ConciliacionListResponse(BaseModel):
     """Respuesta de listado de conciliaciones"""
     conciliaciones: List[ConciliacionListItem]
     total: int
+
+
+class FusionRequest(BaseModel):
+    """Request para fusionar dos agrupaciones"""
+    agrupacion_destino: dict
+    agrupacion_origen: dict
