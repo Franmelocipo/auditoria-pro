@@ -25,19 +25,26 @@ def get_supabase_client(settings: Settings = Depends(get_settings)):
     try:
         from supabase import create_client
         return create_client(settings.supabase_url, settings.supabase_key)
-    except Exception:
+    except Exception as e:
+        print(f"Error creando cliente Supabase: {e}")
         return None
 
 
 def require_supabase(settings: Settings = Depends(get_settings)):
     """Dependencia que requiere Supabase configurado"""
-    client = get_supabase_client(settings)
-    if client is None:
+    if not settings.supabase_url or not settings.supabase_key:
         raise HTTPException(
             status_code=503,
             detail="Base de datos no configurada. Configure SUPABASE_URL y SUPABASE_KEY."
         )
-    return client
+    try:
+        from supabase import create_client
+        return create_client(settings.supabase_url, settings.supabase_key)
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Error conectando a Supabase: {str(e)}"
+        )
 
 
 @router.get("/conciliaciones", response_model=ConciliacionListResponse)
