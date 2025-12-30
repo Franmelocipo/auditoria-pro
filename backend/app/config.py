@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+import os
 
 
 class Settings(BaseSettings):
@@ -25,6 +26,6 @@ class Settings(BaseSettings):
         env_file_encoding = "utf-8"
 
 
-@lru_cache()
+# Sin cache para que tome las variables de entorno en cada request
 def get_settings() -> Settings:
     return Settings()

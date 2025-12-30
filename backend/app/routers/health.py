@@ -29,6 +29,10 @@ async def health_check():
 async def db_health_check(settings: Settings = Depends(get_settings)):
     """Verifica la conexión a Supabase"""
     try:
+        # Debug: mostrar si las variables están configuradas
+        print(f"DEBUG - SUPABASE_URL exists: {bool(settings.supabase_url)}")
+        print(f"DEBUG - SUPABASE_KEY exists: {bool(settings.supabase_key)}")
+
         # Verificar si Supabase está configurado
         if not settings.supabase_url or not settings.supabase_key:
             return JSONResponse(
