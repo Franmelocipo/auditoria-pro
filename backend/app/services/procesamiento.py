@@ -63,7 +63,7 @@ def procesar_excel(contenido: bytes, nombre_archivo: str) -> dict[str, Any]:
     # Mapeo de columnas comunes
     mapeo_columnas = {
         'fecha': ['fecha', 'date', 'fec', 'fcha'],
-        'descripcion': ['descripcion', 'concepto', 'detalle', 'description', 'desc', 'leyenda'],
+        'descripcion': ['descripcion', 'concepto', 'detalle', 'description', 'desc', 'leyenda', 'leyenda movimiento', 'leyenda_movimiento', 'movimiento'],
         'debe': ['debe', 'debit', 'debito', 'débito'],
         'haber': ['haber', 'credit', 'credito', 'crédito'],
         'saldo': ['saldo', 'balance'],

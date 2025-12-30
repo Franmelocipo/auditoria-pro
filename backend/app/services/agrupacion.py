@@ -1,11 +1,9 @@
 """
 Servicio de agrupación de registros contables por razón social.
-Migrado de mayores.js - lógica de extracción y agrupación.
+Optimizado para patrones de sistemas contables argentinos.
 """
 import re
 import unicodedata
-from typing import Optional
-from difflib import SequenceMatcher
 
 
 # Palabras comunes que NO son razones sociales
@@ -23,41 +21,25 @@ PALABRAS_COMUNES = {
     'APLICACION', 'APLICACIÓN',
     'CONTADO', 'CREDITO', 'CRÉDITO',
     'COMP', 'SEGUN', 'SEGÚN', 'S/COMPROBANTE',
-    'AJUSTE', 'DIFERENCIA', 'REDONDEO',
-    'DEVOLUCION', 'DEVOLUCIÓN', 'DEV',
-    'ANTICIPO', 'ANT', 'A CUENTA',
-    'PERCEPCION', 'PERCEPCIÓN', 'PERC',
-    'DEBITO', 'DÉBITO', 'ACREDITACION', 'ACREDITACIÓN'
+    'VENTA CONTADO', 'VENTA SEGUN COMPROBANTE',
+    'NRO', 'Nº', 'N°'
 }
 
-# Sufijos empresariales
+# Sufijos empresariales (no cuentan para similitud)
 SUFIJOS_EMPRESARIALES = {
     'SA', 'SRL', 'SAS', 'SACIF', 'SACI', 'SACIFIA', 'SACIFI', 'SAIC',
-    'LTDA', 'CIA', 'HNOS', 'HERMANOS', 'HIJOS', 'EHIJOS', 'EHIJO',
-    'SOCIEDAD', 'ANONIMA', 'LIMITADA', 'ARGENTINA', 'ARG'
+    'LTDA', 'CIA', 'HNOS', 'HERMANOS', 'HIJOS'
 }
 
-# Palabras genéricas que no cuentan como coincidencia
+# Palabras genéricas que necesitan acompañamiento
 PALABRAS_GENERICAS = {
-    'COMERCIAL', 'COMERCIO', 'DISTRIBUIDORA', 'DISTRIBUIDOR',
-    'SERVICIOS', 'SERVICIO', 'EMPRESA', 'EMPRESAS', 'CIA',
+    'REPUESTOS', 'REPUESTO', 'AUTOPARTES', 'AUTOPARTE',
+    'DISTRIBUIDORA', 'DISTRIBUIDOR', 'SERVICIOS', 'SERVICIO',
+    'COMERCIAL', 'COMERCIO', 'EMPRESA', 'EMPRESAS',
     'NORTE', 'SUR', 'ESTE', 'OESTE', 'CENTRO', 'CENTRAL',
     'ARGENTINA', 'ARG', 'NACIONAL', 'INTERNACIONAL',
-    'DEL', 'DE', 'LA', 'LOS', 'LAS', 'EL', 'Y', 'E'
+    'DEL', 'DE', 'LA', 'LOS', 'LAS', 'EL', 'Y', 'E', 'SAN'
 }
-
-# Patrones de prefijo a eliminar
-PATRONES_PREFIJO = [
-    r'^(?:COMPRA|VENTA|COBRO|PAGO)\s+(?:SEGUN|SEGÚN|S/)\s*(?:COMPROBANTE|COMPROB|COMP|FACTURA|FACT|FC|RECIBO|REC)\s*[-–—/]?\s*',
-    r'^(?:ORDEN\s*(?:DE\s*)?PAGO)\s*(?:N[°º]?)?\s*[\d\-./]*\s*[-–—/]?\s*',
-    r'^OP\s*N[°º]?\s*[\d\-./]+\s*[-–—/]?\s*',
-    r'^(?:FACTURA|FACT|FC|FA|FB|FE|NC|ND)\s*[A-Z]?\s*[\d\-./]+\s*[-–—/]?\s*',
-    r'^(?:RECIBO|REC|CHEQUE|CH)\s*N[°º]?\s*[\d\-./]+\s*[-–—/]?\s*',
-    r'^(?:COMPRA|VENTA|COBRO|PAGO|COMP)\s+(?:CONTADO|CREDITO|CRÉDITO)?\s*[-–—/]?\s*',
-    r'^(?:CANCELACION|CANCELACIÓN|APLICACION|APLICACIÓN)\s*(?:DE)?\s*[-–—/]?\s*',
-    r'^[A-Z]{1,2}[\d\-./]{6,}\s*[-–—/]?\s*',
-    r'^[\d\-./]{4,}\s*[-–—/]?\s*'
-]
 
 
 def quitar_acentos(texto: str) -> str:
@@ -68,233 +50,220 @@ def quitar_acentos(texto: str) -> str:
     )
 
 
-def es_palabra_comun(texto: str) -> bool:
-    """Verifica si un texto es una palabra común (no razón social)."""
-    if not texto:
-        return True
+def normalizar_nombre(nombre: str) -> str:
+    """Normaliza un nombre para comparación y agrupación."""
+    if not nombre:
+        return ''
 
-    txt_upper = texto.upper().strip()
+    n = nombre.upper().strip()
+    n = quitar_acentos(n)
 
-    # Coincidencia exacta
-    if txt_upper in PALABRAS_COMUNES:
-        return True
+    # Quitar comas y reemplazar por espacio
+    n = n.replace(',', ' ')
 
-    # Solo números/códigos
-    if re.match(r'^[\d\-./\s]+$', txt_upper):
-        return True
+    # Normalizar sufijos empresariales
+    n = re.sub(r'S\.?\s*R\.?\s*L\.?(?:\s|$)', 'SRL ', n)
+    n = re.sub(r'S\.?\s*A\.?\s*S\.?(?:\s|$)', 'SAS ', n)
+    n = re.sub(r'S\.?\s*A\.?(?:\s|$)', 'SA ', n)
 
-    # Muy corto (menos de 3 caracteres significativos)
-    letras = re.sub(r'[^A-Z]', '', txt_upper)
-    if len(letras) < 3:
-        return True
-
-    # Patrones de códigos de factura/comprobante
-    if re.match(r'^[A-Z]?\s*[\d]{4,}[\-\d]*$', txt_upper):
-        return True
-
-    # Empieza con palabras comunes
-    if re.match(r'^(?:COMPRA|VENTA|COBRO|PAGO|OP|ORDEN|FACTURA|FACT|FC|NC|ND|REC)\b', txt_upper, re.IGNORECASE):
-        return True
-
-    return False
-
-
-def parece_razon_social(texto: str) -> bool:
-    """Verifica si un texto parece una razón social válida."""
-    if not texto or len(texto) < 3:
-        return False
-
-    txt_upper = texto.upper().strip()
-
-    # Tiene al menos 2 letras consecutivas
-    if not re.search(r'[A-Z]{2,}', txt_upper):
-        return False
-
-    # No es una palabra común
-    if es_palabra_comun(txt_upper):
-        return False
-
-    # No es solo un código
-    if re.match(r'^[A-Z]{1,2}[\d\-.]+$', txt_upper):
-        return False
-
-    return True
-
-
-def normalizar_razon_social(razon_social: str) -> str:
-    """Normaliza una razón social para agrupar variantes similares."""
-    if not razon_social:
-        return 'Sin Asignar'
-
-    normalizada = razon_social.upper().strip()
-
-    # Quitar acentos
-    normalizada = quitar_acentos(normalizada)
-
-    # Quitar puntuación al final
-    normalizada = re.sub(r'[.,;:]+$', '', normalizada)
+    # Quitar puntuación
+    n = re.sub(r'[^\w\s]', ' ', n)
 
     # Quitar espacios múltiples
-    normalizada = re.sub(r'\s+', ' ', normalizada).strip()
+    n = re.sub(r'\s+', ' ', n).strip()
 
-    # Manejar paréntesis abiertos
-    abiertos = normalizada.count('(')
-    cerrados = normalizada.count(')')
-
-    if abiertos > cerrados:
-        ultimo_parentesis = normalizada.rfind('(')
-        if ultimo_parentesis > 0:
-            contenido = normalizada[ultimo_parentesis + 1:]
-            if len(contenido) < 3:
-                normalizada = normalizada[:ultimo_parentesis].strip()
-            else:
-                normalizada += ')'
-
-    return normalizada if normalizada else 'Sin Asignar'
+    return n
 
 
 def extraer_razon_social(leyenda: str) -> str:
     """
     Extrae la razón social de una leyenda contable.
-    Ignora palabras comunes como COMPRA, VENTA, ORDEN DE PAGO, etc.
+    Maneja patrones específicos de sistemas contables.
+
+    Patrones soportados:
+    - "Venta según comprobante - A-0001-00039657 - NOMBRE"
+    - "NOMBRE () Recibo Nº0003-00009688"
+    - "VENTA CONTADO Factura A0001-00075823 (Nombre, )"
     """
     if not leyenda or not isinstance(leyenda, str):
         return 'Sin Asignar'
 
     texto = leyenda.strip()
 
-    # PASO 0: Extraer razón social de paréntesis al final
-    match_parentesis = re.search(r'\(([^)]{3,})\)\s*$', texto)
-    if match_parentesis:
-        contenido = match_parentesis.group(1).strip()
-        if parece_razon_social(contenido):
-            return normalizar_razon_social(contenido)
-
-    # PASO 1: Dividir por separadores comunes
-    partes = re.split(r'\s*[-–—/|]\s*', texto)
-    partes = [p.strip() for p in partes if p.strip()]
-
-    for i, parte in enumerate(partes):
-        # Quitar prefijos numéricos
-        parte = re.sub(r'^[\d\s]+', '', parte).strip()
-
-        if parece_razon_social(parte):
-            nombre_completo = parte
-
-            # Verificar si la siguiente parte es un tipo societario
-            if i + 1 < len(partes):
-                siguiente = partes[i + 1].strip()
-                es_tipo = re.match(
-                    r'^(?:S\.?A\.?C\.?I\.?F\.?|S\.?A\.?|S\.?R\.?L\.?|S\.?A\.?S\.?|S\.?C\.?|S\.?H\.?|INC|LLC|LTDA?|CIA)',
-                    siguiente, re.IGNORECASE
-                )
-                if es_tipo or siguiente.startswith('('):
-                    nombre_completo = f"{parte} {siguiente}"
-
-            return normalizar_razon_social(nombre_completo)
-
-    # PASO 2: Eliminar prefijos conocidos
-    texto_limpio = texto
-    for patron in PATRONES_PREFIJO:
-        texto_limpio = re.sub(patron, '', texto_limpio, flags=re.IGNORECASE)
-    texto_limpio = texto_limpio.strip()
-
-    if len(texto_limpio) >= 3:
-        partes_limpias = re.split(r'\s*[-–—/|]\s*', texto_limpio)
-        partes_limpias = [p.strip() for p in partes_limpias if p.strip()]
-
-        for parte in partes_limpias:
-            parte_clean = re.sub(r'^[\d\s]+', '', parte).strip()
-            if parece_razon_social(parte_clean):
-                return normalizar_razon_social(parte_clean)
-
-        if parece_razon_social(texto_limpio) and len(texto_limpio) <= 80:
-            return normalizar_razon_social(texto_limpio)
-
-    # PASO 3: Buscar patrones específicos
+    # PATRÓN 1: "Venta según comprobante - X-XXXX-XXXXXXXX - NOMBRE"
     match = re.search(
-        r'(?:^|\s)(?:A|DE|CLIENTE|PROVEEDOR|PROV|CLI|PARA):\s*(.+?)(?:\s*[-–—/]|$)',
-        texto, re.IGNORECASE
+        r'[Vv]enta\s+seg[uú]n\s+comprobante\s*-\s*[A-Za-z]?-?\d+-\d+\s*-\s*(.+)$',
+        texto
     )
-    if match and parece_razon_social(match.group(1)):
-        return normalizar_razon_social(match.group(1).strip())
+    if match:
+        nombre = match.group(1).strip()
+        if len(nombre) >= 3 and es_nombre_valido(nombre):
+            return normalizar_nombre(nombre)
 
-    # PASO 4: Último recurso
-    if len(texto) <= 60 and parece_razon_social(texto):
-        return normalizar_razon_social(texto)
+    # PATRÓN 2: "NOMBRE () Recibo NºXXXX-XXXXXXXX" o "NOMBRE () Recibo"
+    match = re.search(r'^(.+?)\s*\(\s*\)\s*[Rr]ecibo', texto)
+    if match:
+        nombre = match.group(1).strip()
+        if len(nombre) >= 3 and es_nombre_valido(nombre):
+            return normalizar_nombre(nombre)
+
+    # PATRÓN 3: "... Factura XXXXX-XXXXXXXX (Nombre, )" - nombre entre paréntesis
+    match = re.search(r'[Ff]actura\s+[A-Za-z]?\d+-\d+\s*\(([^)]+)\)', texto)
+    if match:
+        nombre = match.group(1).strip()
+        # Limpiar comas y espacios al final
+        nombre = re.sub(r'[,\s]+$', '', nombre)
+        nombre = re.sub(r'^[,\s]+', '', nombre)
+        if len(nombre) >= 3 and es_nombre_valido(nombre):
+            return normalizar_nombre(nombre)
+
+    # PATRÓN 4: Nombre entre paréntesis al final (genérico)
+    match = re.search(r'\(([^)]{3,})\)\s*$', texto)
+    if match:
+        nombre = match.group(1).strip()
+        nombre = re.sub(r'[,\s]+$', '', nombre)
+        nombre = re.sub(r'^[,\s]+', '', nombre)
+        if es_nombre_valido(nombre):
+            return normalizar_nombre(nombre)
+
+    # PATRÓN 5: Último segmento después de guión (si parece nombre)
+    partes = texto.split(' - ')
+    if len(partes) >= 2:
+        ultima = partes[-1].strip()
+        if es_nombre_valido(ultima) and len(ultima) >= 3:
+            return normalizar_nombre(ultima)
 
     return 'Sin Asignar'
 
 
+def es_nombre_valido(texto: str) -> bool:
+    """Verifica si el texto parece un nombre o razón social válido."""
+    if not texto or len(texto) < 3:
+        return False
+
+    t = texto.upper().strip()
+
+    # No debe ser solo números o códigos
+    if re.match(r'^[A-Z]?\d[\d\-./]*$', t):
+        return False
+
+    # Debe tener al menos 2 letras
+    letras = re.sub(r'[^A-Z]', '', t)
+    if len(letras) < 2:
+        return False
+
+    # No debe ser una palabra común sola
+    if t in PALABRAS_COMUNES:
+        return False
+
+    # No debe empezar con palabras de transacción
+    if re.match(r'^(VENTA|COMPRA|COBRO|PAGO|RECIBO|FACTURA|OP\s)', t):
+        return False
+
+    return True
+
+
 def generar_clave_agrupacion(razon_social: str) -> str:
-    """Genera una clave para agrupar variantes del mismo nombre."""
+    """
+    Genera una clave para agrupar variantes del mismo nombre.
+    Ordena las palabras para que "ROQUE SQUILLACE" == "SQUILLACE ROQUE"
+    """
     if not razon_social or razon_social == 'Sin Asignar':
         return razon_social
 
-    clave = razon_social.upper()
+    clave = normalizar_nombre(razon_social)
 
-    # Quitar puntuación
-    clave = re.sub(r'[.,;:\-–—/\\()\'"]', ' ', clave)
+    # Quitar sufijos empresariales
+    for sufijo in SUFIJOS_EMPRESARIALES:
+        clave = re.sub(rf'\b{sufijo}\b', '', clave)
 
-    # Quitar sufijos societarios
-    clave = re.sub(r'\b(?:SA|SRL|SAS|SACIF|SCA|SH|INC|LLC|LTDA?|CIA)\b', '', clave)
-
-    # Quitar espacios múltiples
-    clave = re.sub(r'\s+', ' ', clave).strip()
-
-    # Tomar primeras 4 palabras significativas
+    # Quitar palabras muy cortas
     palabras = [p for p in clave.split() if len(p) >= 2]
-    clave = ' '.join(palabras[:4])
 
-    return clave if clave else razon_social
+    # Filtrar palabras genéricas solo si hay otras palabras significativas
+    palabras_significativas = [p for p in palabras if p not in PALABRAS_GENERICAS]
+    if len(palabras_significativas) >= 1:
+        palabras = palabras_significativas
+
+    # Ordenar alfabéticamente para normalizar orden
+    palabras = sorted(palabras)
+
+    # Tomar máximo 4 palabras
+    return ' '.join(palabras[:4]) if palabras else razon_social
 
 
 def calcular_similitud(str1: str, str2: str) -> float:
-    """Calcula similitud entre dos strings (0 a 1)."""
+    """
+    Calcula similitud entre dos razones sociales (0 a 1).
+    Detecta variantes como "SQUILLACE, ROQUE" vs "SQUILLACE ROQUE"
+    """
     if not str1 or not str2:
         return 0.0
-    if str1 == str2:
+
+    # Normalizar ambos
+    s1 = normalizar_nombre(str1)
+    s2 = normalizar_nombre(str2)
+
+    if s1 == s2:
         return 1.0
 
-    s1 = str1.upper()
-    s2 = str2.upper()
-
-    # Si uno contiene al otro completamente
-    if (s2 in s1 and len(s2) >= 5) or (s1 in s2 and len(s1) >= 5):
+    # Si uno contiene al otro (y es significativo)
+    if len(s2) >= 6 and s2 in s1:
+        return 0.9
+    if len(s1) >= 6 and s1 in s2:
         return 0.9
 
-    def extraer_palabras_significativas(texto: str):
-        todas = [p for p in texto.split() if len(p) >= 2]
+    # Extraer palabras
+    def extraer_palabras(texto: str):
+        palabras = texto.split()
+        todas = [p for p in palabras if len(p) >= 2]
+        # Palabras significativas: no son genéricas ni sufijos
         significativas = [
             p for p in todas
             if p not in SUFIJOS_EMPRESARIALES and p not in PALABRAS_GENERICAS
         ]
         return todas, significativas
 
-    todas1, sig1 = extraer_palabras_significativas(s1)
-    todas2, sig2 = extraer_palabras_significativas(s2)
+    todas1, sig1 = extraer_palabras(s1)
+    todas2, sig2 = extraer_palabras(s2)
 
     if not sig1 or not sig2:
         return 0.0
 
-    # Determinar si es nombre simple
-    es_simple1 = len(sig1) == 1 and len(todas1) <= 3
-    es_simple2 = len(sig2) == 1 and len(todas2) <= 3
-    ambos_simples = es_simple1 and es_simple2
-
-    # Contar coincidencias
     set1 = set(sig1)
     set2 = set(sig2)
+
+    # Coincidencias exactas
     coincidencias = len(set1 & set2)
 
-    # Mínimo requerido
-    minimo = 1 if ambos_simples else 2
+    # Coincidencias parciales (una palabra contiene a otra, ej: "SARRIES" en "SARRIES JORGE")
+    for p1 in set1:
+        for p2 in set2:
+            if p1 != p2 and len(p1) >= 4 and len(p2) >= 4:
+                if p1 in p2 or p2 in p1:
+                    coincidencias += 0.5
+                    break
+
+    # Determinar mínimo requerido
+    # Si ambos tienen solo 1 palabra significativa, 1 coincidencia basta
+    # Si tienen palabras genéricas, necesitan más coincidencias
+    tiene_generica1 = any(p in PALABRAS_GENERICAS for p in todas1)
+    tiene_generica2 = any(p in PALABRAS_GENERICAS for p in todas2)
+
+    if len(sig1) == 1 and len(sig2) == 1:
+        minimo = 1
+    elif tiene_generica1 or tiene_generica2:
+        # Si hay palabras genéricas, necesita más coincidencias
+        minimo = 2
+    else:
+        minimo = 1.5
 
     if coincidencias < minimo:
         return 0.0
 
+    # Calcular ratio
     total = max(len(set1), len(set2))
-    return coincidencias / total
+    return min(coincidencias / total, 1.0)
 
 
 def generar_id_agrupacion(razon_social: str) -> str:
