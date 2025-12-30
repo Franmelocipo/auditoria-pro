@@ -9,12 +9,17 @@ router = APIRouter()
 def get_supabase_client(settings: Settings):
     """Intenta crear cliente Supabase si está configurado"""
     if not settings.supabase_url or not settings.supabase_key:
-        return None
+        return None, "Variables no configuradas"
     try:
         from supabase import create_client
-        return create_client(settings.supabase_url, settings.supabase_key)
-    except Exception:
-        return None
+        # Debug
+        print(f"DEBUG - URL starts with: {settings.supabase_url[:40]}...")
+        print(f"DEBUG - KEY length: {len(settings.supabase_key)}")
+        client = create_client(settings.supabase_url, settings.supabase_key)
+        return client, None
+    except Exception as e:
+        print(f"DEBUG - Error creating client: {str(e)}")
+        return None, str(e)
 
 
 @router.get("/health")
@@ -45,13 +50,13 @@ async def db_health_check(settings: Settings = Depends(get_settings)):
             )
 
         # Intentar crear cliente y consulta
-        client = get_supabase_client(settings)
+        client, error = get_supabase_client(settings)
         if client is None:
             return JSONResponse(
                 content={
                     "status": "unhealthy",
                     "database": "error",
-                    "message": "No se pudo crear cliente Supabase"
+                    "message": f"No se pudo crear cliente Supabase: {error}"
                 },
                 headers={"Access-Control-Allow-Origin": "*"}
             )
