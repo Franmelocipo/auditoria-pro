@@ -293,6 +293,105 @@ async def fusionar_grupos(fusion: FusionRequest):
         raise HTTPException(status_code=500, detail=f"Error al fusionar: {str(e)}")
 
 
+@router.post("/procesar-saldos")
+async def procesar_archivo_saldos(
+    file: UploadFile = File(...),
+):
+    """
+    Procesa un archivo Excel con saldos por razón social.
+    Espera columnas: Razón Social / Nombre y Saldo / Monto / Importe
+    """
+    import pandas as pd
+    from io import BytesIO
+
+    try:
+        if not file.filename.endswith(('.xlsx', '.xls', '.csv')):
+            raise HTTPException(status_code=400, detail="El archivo debe ser Excel o CSV")
+
+        contenido = await file.read()
+
+        # Leer archivo
+        if file.filename.endswith('.csv'):
+            df = pd.read_csv(BytesIO(contenido))
+        else:
+            df = pd.read_excel(BytesIO(contenido))
+
+        # Normalizar nombres de columnas
+        df.columns = df.columns.str.strip().str.lower()
+
+        # Buscar columna de razón social
+        col_razon = None
+        for col in df.columns:
+            if any(x in col for x in ['razon', 'razón', 'nombre', 'cliente', 'proveedor', 'deudor']):
+                col_razon = col
+                break
+
+        if not col_razon:
+            # Usar primera columna de texto
+            for col in df.columns:
+                if df[col].dtype == 'object':
+                    col_razon = col
+                    break
+
+        if not col_razon:
+            raise HTTPException(status_code=400, detail="No se encontró columna de razón social")
+
+        # Buscar columna de saldo
+        col_saldo = None
+        for col in df.columns:
+            if any(x in col for x in ['saldo', 'monto', 'importe', 'total', 'debe', 'haber']):
+                col_saldo = col
+                break
+
+        if not col_saldo:
+            # Buscar primera columna numérica
+            for col in df.columns:
+                if col != col_razon and pd.api.types.is_numeric_dtype(df[col]):
+                    col_saldo = col
+                    break
+
+        if not col_saldo:
+            raise HTTPException(status_code=400, detail="No se encontró columna de saldo")
+
+        # Procesar datos
+        saldos = []
+        for _, row in df.iterrows():
+            razon = str(row[col_razon]).strip() if pd.notna(row[col_razon]) else ''
+            if not razon or razon.lower() in ['nan', 'none', '']:
+                continue
+
+            try:
+                saldo_val = row[col_saldo]
+                if pd.isna(saldo_val):
+                    saldo = 0.0
+                elif isinstance(saldo_val, str):
+                    # Limpiar formato de moneda
+                    saldo_str = saldo_val.replace('$', '').replace('.', '').replace(',', '.').strip()
+                    saldo = float(saldo_str) if saldo_str else 0.0
+                else:
+                    saldo = float(saldo_val)
+            except (ValueError, TypeError):
+                saldo = 0.0
+
+            saldos.append({
+                "razonSocial": razon,
+                "saldo": saldo
+            })
+
+        return {
+            "success": True,
+            "saldos": saldos,
+            "total": len(saldos),
+            "columna_razon": col_razon,
+            "columna_saldo": col_saldo
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al procesar saldos: {str(e)}")
+
+
 @router.delete("/conciliaciones/{conciliacion_id}")
 async def eliminar_conciliacion(
     conciliacion_id: int,
