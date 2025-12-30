@@ -14,12 +14,14 @@ export interface AgrupacionMayor {
   id?: string
   razonSocial?: string
   registros: RegistroMayor[]
+  cantidad?: number
   totalDebe?: number
   totalHaber?: number
   saldo?: number
   comentarios?: string
   estado?: string
   color?: string
+  variantes?: string[]
 }
 
 export interface Conciliacion {
