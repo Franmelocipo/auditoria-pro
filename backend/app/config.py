@@ -3,9 +3,9 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    # Supabase
-    supabase_url: str
-    supabase_key: str
+    # Supabase (opcionales para permitir deploy sin DB)
+    supabase_url: str | None = None
+    supabase_key: str | None = None
     supabase_service_key: str | None = None
 
     # JWT

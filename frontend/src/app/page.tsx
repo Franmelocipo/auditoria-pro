@@ -31,7 +31,8 @@ export default function Home() {
       const dbData = await dbRes.json()
       setHealth(prev => ({
         ...prev,
-        db: dbData.status === 'healthy' ? 'healthy' : 'error'
+        db: dbData.status === 'healthy' ? 'healthy' :
+            dbData.status === 'not_configured' ? 'loading' : 'error'
       }))
     } catch (error) {
       setHealth({ api: 'error', db: 'error' })
