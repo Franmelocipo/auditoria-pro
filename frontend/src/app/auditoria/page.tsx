@@ -187,10 +187,15 @@ export default function AuditoriaPage() {
     setSaving(true)
     setError(null)
 
+    // Crear AbortController con timeout de 2 minutos
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 120000)
+
     try {
       const response = await fetch(`${API_URL}/api/auditoria/conciliaciones`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           id: conciliacionId,
           nombre: nombreConciliacion,
@@ -204,6 +209,8 @@ export default function AuditoriaPage() {
           saldosCierre: saldosCierre,
         })
       })
+
+      clearTimeout(timeoutId)
 
       if (!response.ok) {
         const data = await response.json()
@@ -227,7 +234,12 @@ export default function AuditoriaPage() {
       alert(`Conciliacion guardada correctamente`)
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al guardar')
+      clearTimeout(timeoutId)
+      if (err instanceof Error && err.name === 'AbortError') {
+        setError('La operacion tardo demasiado. Intente guardar menos datos.')
+      } else {
+        setError(err instanceof Error ? err.message : 'Error al guardar')
+      }
     } finally {
       setSaving(false)
     }
