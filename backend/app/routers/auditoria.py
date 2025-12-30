@@ -107,6 +107,12 @@ async def obtener_conciliacion(
             if agrupaciones_result.data:
                 conciliacion["agrupaciones"] = agrupaciones_result.data[0].get("agrupaciones", [])
 
+        # Mapear saldos a camelCase para el frontend
+        if conciliacion.get("saldos_inicio"):
+            conciliacion["saldosInicio"] = conciliacion.pop("saldos_inicio")
+        if conciliacion.get("saldos_cierre"):
+            conciliacion["saldosCierre"] = conciliacion.pop("saldos_cierre")
+
         return conciliacion
 
     except HTTPException:
@@ -145,11 +151,15 @@ async def crear_conciliacion(
         cliente_id = body.get("cliente_id")
         registros = body.get("registros", [])
         agrupaciones = body.get("agrupaciones", [])
+        saldos_inicio = body.get("saldosInicio", [])
+        saldos_cierre = body.get("saldosCierre", [])
         conciliacion_id_existente = body.get("id")
 
         # Limpiar valores NaN/Infinity
         registros = limpiar_valores_json(registros)
         agrupaciones = limpiar_valores_json(agrupaciones)
+        saldos_inicio = limpiar_valores_json(saldos_inicio)
+        saldos_cierre = limpiar_valores_json(saldos_cierre)
 
         # Determinar si guardar en tablas auxiliares
         guardar_registros_separado = len(registros) > 10000
@@ -163,6 +173,8 @@ async def crear_conciliacion(
             "agrupaciones_count": len(agrupaciones),
             "registros_guardados_separado": guardar_registros_separado,
             "agrupaciones_guardadas_separado": guardar_agrupaciones_separado,
+            "saldos_inicio": saldos_inicio,
+            "saldos_cierre": saldos_cierre,
         }
 
         if not guardar_registros_separado:
