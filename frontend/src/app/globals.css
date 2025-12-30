@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-rgb: 249, 250, 251;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-rgb));
+}
+
+/* Estilos para tablas virtualizadas */
+.virtual-table {
+  @apply w-full border-collapse;
+}
+
+.virtual-table th {
+  @apply bg-gray-100 text-left px-4 py-2 font-medium text-gray-700 border-b sticky top-0;
+}
+
+.virtual-table td {
+  @apply px-4 py-2 border-b border-gray-100;
+}
+
+.virtual-table tr:hover td {
+  @apply bg-gray-50;
+}
+
+/* Drag & Drop */
+.dragging {
+  @apply opacity-50 bg-primary-50;
+}
+
+.drop-target {
+  @apply border-2 border-dashed border-primary-400 bg-primary-50;
+}
+
+/* Scrollbar personalizado */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-100 rounded;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 rounded hover:bg-gray-400;
+}
