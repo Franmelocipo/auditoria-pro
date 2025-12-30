@@ -50,7 +50,7 @@ def require_supabase(settings: Settings = Depends(get_settings)):
 
 @router.get("/conciliaciones", response_model=ConciliacionListResponse)
 async def listar_conciliaciones(
-    cliente_id: Optional[int] = Query(None, description="Filtrar por cliente"),
+    cliente_id: Optional[str] = Query(None, description="Filtrar por cliente"),
     limit: int = Query(50, le=100),
     offset: int = Query(0, ge=0),
     supabase = Depends(require_supabase)
