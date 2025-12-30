@@ -24,22 +24,51 @@ export interface AgrupacionMayor {
   estado?: string
   color?: string
   variantes?: string[]
+  // Campos para cuadro comparativo
+  saldoInicio?: number
+  saldoCierre?: number
+  ajusteAuditoria?: number
+  notaAjuste?: string
+}
+
+// Saldo por razón social (para cargar desde Excel)
+export interface SaldoRazonSocial {
+  razonSocial: string
+  saldo: number
+}
+
+// Fila del cuadro comparativo
+export interface FilaCuadroComparativo {
+  razonSocial: string
+  saldoInicio: number
+  debe: number
+  haber: number
+  saldoCalculado: number  // saldoInicio + debe - haber
+  ajusteAuditoria: number
+  saldoReportado: number  // saldoCierre
+  diferencia: number      // saldoCalculado + ajuste - saldoReportado
+  estado: 'ok' | 'diferencia' | 'sin_cierre'
+  notaAjuste?: string
 }
 
 export interface Conciliacion {
   id?: number
   nombre: string
-  cliente_id?: number
+  cliente_id?: string
   fecha_creacion?: string
   fecha_modificacion?: string
   registros_count?: number
   agrupaciones_count?: number
   registros?: RegistroMayor[]
   agrupaciones?: AgrupacionMayor[]
+  // Datos adicionales para el cuadro comparativo
+  saldosInicio?: SaldoRazonSocial[]
+  saldosCierre?: SaldoRazonSocial[]
+  mayorIncluyeApertura?: boolean
 }
 
 export interface Cliente {
-  id: number
+  id: string
   nombre: string
   cuit?: string
 }

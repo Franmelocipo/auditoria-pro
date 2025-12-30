@@ -1,11 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Save, FolderOpen, Trash2, RefreshCw, User, ChevronRight, Plus, FileSpreadsheet, Calendar } from 'lucide-react'
+import { Save, Trash2, RefreshCw, User, ChevronRight, Plus, FileSpreadsheet, Calendar, LayoutList, Table2 } from 'lucide-react'
 import { ExcelUploader } from '@/components/auditoria/ExcelUploader'
 import { AgrupacionesList } from '@/components/auditoria/AgrupacionesList'
 import { Estadisticas } from '@/components/auditoria/Estadisticas'
 import { SinAsignar } from '@/components/auditoria/SinAsignar'
+import { SaldosUploader } from '@/components/auditoria/SaldosUploader'
+import { CuadroComparativo } from '@/components/auditoria/CuadroComparativo'
 import { useAuditoriaStore } from '@/stores/auditoriaStore'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -45,14 +47,20 @@ export default function AuditoriaPage() {
     registros,
     agrupaciones,
     sinAsignar,
+    saldosInicio,
+    saldosCierre,
     loading,
     error,
+    tabActiva,
     limpiar,
     setError,
     setRegistros,
     setAgrupaciones,
     setSinAsignar,
-    setLoading
+    setLoading,
+    setTabActiva,
+    setSaldosInicio,
+    setSaldosCierre,
   } = useAuditoriaStore()
 
   const tieneData = registros.length > 0 || agrupaciones.length > 0
@@ -152,7 +160,10 @@ export default function AuditoriaPage() {
       setNombreConciliacion(data.nombre || '')
       setRegistros(data.registros || [])
       setAgrupaciones(data.agrupaciones || [])
-      setSinAsignar([]) // Las conciliaciones guardadas no tienen sin_asignar separado
+      setSinAsignar([])
+      // Cargar saldos si existen
+      if (data.saldosInicio) setSaldosInicio(data.saldosInicio)
+      if (data.saldosCierre) setSaldosCierre(data.saldosCierre)
       setModoNuevo(false)
 
     } catch (err) {
@@ -181,14 +192,16 @@ export default function AuditoriaPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: conciliacionId, // Si existe, actualiza; si no, crea nuevo
+          id: conciliacionId,
           nombre: nombreConciliacion,
           cliente_id: clienteId,
           registros: registros,
           agrupaciones: agrupaciones.map(a => ({
             ...a,
             registros: a.registros || []
-          }))
+          })),
+          saldosInicio: saldosInicio,
+          saldosCierre: saldosCierre,
         })
       })
 
@@ -199,12 +212,10 @@ export default function AuditoriaPage() {
 
       const data = await response.json()
 
-      // Actualizar ID si es nueva
       if (!conciliacionId) {
         setConciliacionId(data.id)
       }
 
-      // Recargar lista de conciliaciones
       if (clienteId) {
         const listResponse = await fetch(`${API_URL}/api/auditoria/conciliaciones?cliente_id=${clienteId}`)
         if (listResponse.ok) {
@@ -370,7 +381,6 @@ export default function AuditoriaPage() {
               </button>
             </div>
 
-            {/* Boton nueva conciliacion */}
             <button
               onClick={handleNuevaConciliacion}
               className="w-full flex items-center justify-center gap-2 p-4 border-2 border-dashed border-primary-300 rounded-lg text-primary-600 hover:bg-primary-50 hover:border-primary-400 transition-colors mb-4"
@@ -379,7 +389,6 @@ export default function AuditoriaPage() {
               Nueva conciliacion (cargar Excel)
             </button>
 
-            {/* Lista de conciliaciones existentes */}
             {loadingConciliaciones ? (
               <div className="flex items-center justify-center py-8">
                 <RefreshCw className="w-6 h-6 animate-spin text-primary-500" />
@@ -443,33 +452,82 @@ export default function AuditoriaPage() {
         </div>
       )}
 
-      {/* PASO 3: Mostrar agrupaciones */}
+      {/* PASO 3: Panel principal con datos */}
       {clienteSeleccionado && tieneData && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Columna principal - Agrupaciones */}
-          <div className="lg:col-span-2 space-y-4">
-            <div className="bg-white rounded-lg border p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold text-gray-900">
-                  Agrupaciones por Razon Social
-                </h2>
-                <span className="text-sm text-gray-500">
-                  {agrupaciones.length} grupos
-                </span>
-              </div>
-              <AgrupacionesList />
+        <div className="space-y-4">
+          {/* Saldos de Inicio y Cierre */}
+          <div className="bg-white rounded-lg border p-4">
+            <h3 className="font-medium text-gray-900 mb-4 flex items-center gap-2">
+              <Table2 className="w-5 h-5 text-blue-600" />
+              Saldos de Inicio y Cierre
+            </h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Cargue los listados de saldos para comparar con los movimientos del mayor.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <SaldosUploader tipo="inicio" />
+              <SaldosUploader tipo="cierre" />
             </div>
           </div>
 
-          {/* Sidebar */}
-          <div className="space-y-4">
-            <Estadisticas />
-            <SinAsignar />
+          {/* Tabs */}
+          <div className="bg-white rounded-lg border overflow-hidden">
+            <div className="flex border-b">
+              <button
+                onClick={() => setTabActiva('agrupaciones')}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 font-medium transition-colors ${
+                  tabActiva === 'agrupaciones'
+                    ? 'bg-primary-600 text-white'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <LayoutList className="w-4 h-4" />
+                Agrupaciones
+              </button>
+              <button
+                onClick={() => setTabActiva('cuadro')}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 font-medium transition-colors ${
+                  tabActiva === 'cuadro'
+                    ? 'bg-primary-600 text-white'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <Table2 className="w-4 h-4" />
+                Cuadro Comparativo
+              </button>
+            </div>
 
-            {/* Cargar otro archivo */}
-            <div className="bg-white rounded-lg border p-4">
-              <h3 className="font-medium text-gray-700 mb-3">Cargar otro archivo</h3>
-              <ExcelUploader />
+            <div className="p-4">
+              {tabActiva === 'agrupaciones' ? (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Columna principal - Agrupaciones */}
+                  <div className="lg:col-span-2 space-y-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h2 className="font-semibold text-gray-900">
+                        Agrupaciones por Razon Social
+                      </h2>
+                      <span className="text-sm text-gray-500">
+                        {agrupaciones.length} grupos
+                      </span>
+                    </div>
+                    <AgrupacionesList />
+                  </div>
+
+                  {/* Sidebar */}
+                  <div className="space-y-4">
+                    <Estadisticas />
+                    <SinAsignar />
+
+                    {/* Cargar otro archivo */}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h3 className="font-medium text-gray-700 mb-3">Cargar otro archivo</h3>
+                      <ExcelUploader />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <CuadroComparativo />
+              )}
             </div>
           </div>
         </div>
