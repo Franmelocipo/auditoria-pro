@@ -301,10 +301,15 @@ async def listar_clientes(
 ):
     """Lista todos los clientes disponibles"""
     try:
-        result = supabase.table("clientes").select("id, nombre, cuit").order("nombre").execute()
+        result = supabase.table("clientes").select("id, razon_social, cuit").order("razon_social").execute()
+        # Mapear razon_social a nombre para compatibilidad con frontend
+        clientes = [
+            {"id": c["id"], "nombre": c["razon_social"], "cuit": c.get("cuit")}
+            for c in result.data
+        ]
         return {
             "success": True,
-            "clientes": result.data
+            "clientes": clientes
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al listar clientes: {str(e)}")
