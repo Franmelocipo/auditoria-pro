@@ -48,6 +48,42 @@ interface AuditoriaState {
 
 const initialTotales: Totales = { debe: 0, haber: 0, saldo: 0 }
 
+// Función para recalcular totales desde agrupaciones y sin asignar
+function calcularTotales(agrupaciones: AgrupacionMayor[], sinAsignar: RegistroMayor[]): Totales {
+  let debe = 0
+  let haber = 0
+
+  // Sumar de agrupaciones
+  agrupaciones.forEach(a => {
+    debe += a.totalDebe || 0
+    haber += a.totalHaber || 0
+  })
+
+  // Sumar de sin asignar
+  sinAsignar.forEach(r => {
+    debe += r.debe || 0
+    haber += r.haber || 0
+  })
+
+  return { debe, haber, saldo: debe - haber }
+}
+
+// Función para recalcular estadísticas
+function calcularEstadisticas(
+  registros: RegistroMayor[],
+  agrupaciones: AgrupacionMayor[],
+  sinAsignar: RegistroMayor[]
+): Estadisticas {
+  const registrosAsignados = agrupaciones.reduce((sum, a) => sum + (a.registros?.length || 0), 0)
+
+  return {
+    total_registros: registros.length,
+    total_agrupaciones: agrupaciones.length,
+    registros_asignados: registrosAsignados,
+    registros_sin_asignar: sinAsignar.length
+  }
+}
+
 export const useAuditoriaStore = create<AuditoriaState>((set, get) => ({
   // Estado inicial
   registros: [],
@@ -73,7 +109,7 @@ export const useAuditoriaStore = create<AuditoriaState>((set, get) => ({
 
   // Fusionar dos agrupaciones
   fusionarAgrupaciones: (destinoId, origenId) => {
-    const { agrupaciones } = get()
+    const { agrupaciones, sinAsignar, registros } = get()
 
     const destino = agrupaciones.find(a => a.id === destinoId)
     const origen = agrupaciones.find(a => a.id === origenId)
@@ -82,6 +118,12 @@ export const useAuditoriaStore = create<AuditoriaState>((set, get) => ({
 
     // Combinar registros
     const registrosCombinados = [...(destino.registros || []), ...(origen.registros || [])]
+
+    // Combinar variantes
+    const variantesCombinadas = [
+      ...(destino.variantes || [destino.razonSocial || '']),
+      ...(origen.variantes || [origen.razonSocial || ''])
+    ].filter((v, i, arr) => v && arr.indexOf(v) === i)
 
     // Calcular nuevos totales
     const totalDebe = registrosCombinados.reduce((sum, r) => sum + (r.debe || 0), 0)
@@ -97,17 +139,26 @@ export const useAuditoriaStore = create<AuditoriaState>((set, get) => ({
           totalDebe,
           totalHaber,
           saldo: totalDebe - totalHaber,
+          variantes: variantesCombinadas,
         }
       }
       return a
     }).filter(a => a.id !== origenId) // Eliminar origen
 
-    set({ agrupaciones: nuevasAgrupaciones })
+    // Recalcular totales y estadísticas
+    const nuevosTotales = calcularTotales(nuevasAgrupaciones, sinAsignar)
+    const nuevasEstadisticas = calcularEstadisticas(registros, nuevasAgrupaciones, sinAsignar)
+
+    set({
+      agrupaciones: nuevasAgrupaciones,
+      totales: nuevosTotales,
+      estadisticas: nuevasEstadisticas
+    })
   },
 
   // Mover registro a sin asignar
   moverASinAsignar: (agrupacionId, registroId) => {
-    const { agrupaciones, sinAsignar } = get()
+    const { agrupaciones, sinAsignar, registros } = get()
 
     let registroMovido: RegistroMayor | null = null
 
@@ -133,16 +184,24 @@ export const useAuditoriaStore = create<AuditoriaState>((set, get) => ({
     }).filter(a => (a.registros?.length || 0) > 0) // Eliminar agrupaciones vacías
 
     if (registroMovido) {
+      const nuevoSinAsignar = [...sinAsignar, registroMovido]
+
+      // Recalcular totales y estadísticas
+      const nuevosTotales = calcularTotales(nuevasAgrupaciones, nuevoSinAsignar)
+      const nuevasEstadisticas = calcularEstadisticas(registros, nuevasAgrupaciones, nuevoSinAsignar)
+
       set({
         agrupaciones: nuevasAgrupaciones,
-        sinAsignar: [...sinAsignar, registroMovido]
+        sinAsignar: nuevoSinAsignar,
+        totales: nuevosTotales,
+        estadisticas: nuevasEstadisticas
       })
     }
   },
 
   // Mover registro de sin asignar a una agrupacion
   moverAAgrupacion: (registroId, agrupacionId) => {
-    const { agrupaciones, sinAsignar } = get()
+    const { agrupaciones, sinAsignar, registros } = get()
 
     const registro = sinAsignar.find(r => r.id === registroId)
     if (!registro) return
@@ -164,9 +223,17 @@ export const useAuditoriaStore = create<AuditoriaState>((set, get) => ({
       return a
     })
 
+    const nuevoSinAsignar = sinAsignar.filter(r => r.id !== registroId)
+
+    // Recalcular totales y estadísticas
+    const nuevosTotales = calcularTotales(nuevasAgrupaciones, nuevoSinAsignar)
+    const nuevasEstadisticas = calcularEstadisticas(registros, nuevasAgrupaciones, nuevoSinAsignar)
+
     set({
       agrupaciones: nuevasAgrupaciones,
-      sinAsignar: sinAsignar.filter(r => r.id !== registroId)
+      sinAsignar: nuevoSinAsignar,
+      totales: nuevosTotales,
+      estadisticas: nuevasEstadisticas
     })
   },
 

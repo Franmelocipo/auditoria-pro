@@ -1,10 +1,10 @@
 'use client'
 
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, useMemo } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ChevronDown, ChevronRight, GripVertical, Users, DollarSign } from 'lucide-react'
+import { ChevronDown, ChevronRight, GripVertical, Users, Search, X, ArrowRight } from 'lucide-react'
 import { useAuditoriaStore } from '@/stores/auditoriaStore'
-import { AgrupacionMayor } from '@/types/auditoria'
+import { AgrupacionMayor, RegistroMayor } from '@/types/auditoria'
 
 function formatearMoneda(valor: number): string {
   return new Intl.NumberFormat('es-AR', {
@@ -23,6 +23,7 @@ interface AgrupacionItemProps {
   onDragStart: (e: React.DragEvent) => void
   onDragOver: (e: React.DragEvent) => void
   onDrop: (e: React.DragEvent) => void
+  onMoverRegistroASinAsignar: (registroId: string) => void
 }
 
 function AgrupacionItem({
@@ -33,21 +34,30 @@ function AgrupacionItem({
   onToggleExpand,
   onDragStart,
   onDragOver,
-  onDrop
+  onDrop,
+  onMoverRegistroASinAsignar
 }: AgrupacionItemProps) {
   const [isDragOver, setIsDragOver] = useState(false)
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
     setIsDragOver(true)
     onDragOver(e)
   }
 
-  const handleDragLeave = () => {
-    setIsDragOver(false)
+  const handleDragLeave = (e: React.DragEvent) => {
+    // Solo quitar el estado si realmente salimos del elemento
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = e.clientX
+    const y = e.clientY
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      setIsDragOver(false)
+    }
   }
 
   const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
     setIsDragOver(false)
     onDrop(e)
   }
@@ -59,7 +69,7 @@ function AgrupacionItem({
       className={`
         border rounded-lg mb-2 bg-white transition-all
         ${isSelected ? 'ring-2 ring-primary-500 border-primary-500' : 'border-gray-200'}
-        ${isDragOver ? 'ring-2 ring-blue-400 bg-blue-50' : ''}
+        ${isDragOver ? 'ring-2 ring-blue-400 bg-blue-50 border-blue-400' : ''}
       `}
       draggable
       onDragStart={onDragStart}
@@ -97,6 +107,11 @@ function AgrupacionItem({
               <Users className="w-3 h-3" />
               {agrupacion.cantidad || agrupacion.registros?.length || 0} registros
             </span>
+            {agrupacion.variantes && agrupacion.variantes.length > 1 && (
+              <span className="text-xs text-blue-600">
+                +{agrupacion.variantes.length - 1} variantes
+              </span>
+            )}
           </div>
         </div>
 
@@ -112,39 +127,65 @@ function AgrupacionItem({
         </div>
       </div>
 
+      {/* Indicador de drop */}
+      {isDragOver && (
+        <div className="px-3 pb-2 text-sm text-blue-600 font-medium">
+          Soltar aqui para agregar
+        </div>
+      )}
+
       {/* Registros expandidos */}
       {isExpanded && agrupacion.registros && agrupacion.registros.length > 0 && (
-        <div className="border-t bg-gray-50 max-h-64 overflow-auto">
+        <div className="border-t bg-gray-50 max-h-80 overflow-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-100 sticky top-0">
               <tr>
+                <th className="px-3 py-2 text-left font-medium text-gray-600 w-8"></th>
                 <th className="px-3 py-2 text-left font-medium text-gray-600">Fecha</th>
                 <th className="px-3 py-2 text-left font-medium text-gray-600">Descripcion</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-600">Debe</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-600">Haber</th>
+                <th className="px-3 py-2 text-center font-medium text-gray-600 w-10">Acc.</th>
               </tr>
             </thead>
             <tbody>
-              {agrupacion.registros.slice(0, 50).map((registro, idx) => (
-                <tr key={registro.id || idx} className="border-b border-gray-100 hover:bg-white">
-                  <td className="px-3 py-2 text-gray-600">
+              {agrupacion.registros.slice(0, 100).map((registro, idx) => (
+                <tr key={registro.id || idx} className="border-b border-gray-100 hover:bg-white group">
+                  <td className="px-2 py-2 text-gray-400 text-xs">
+                    {idx + 1}
+                  </td>
+                  <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
                     {registro.fecha ? new Date(registro.fecha).toLocaleDateString('es-AR') : '-'}
                   </td>
-                  <td className="px-3 py-2 text-gray-800 truncate max-w-xs">
+                  <td className="px-3 py-2 text-gray-800 truncate max-w-xs" title={registro.descripcion || registro.concepto || ''}>
                     {registro.descripcion || registro.concepto || '-'}
                   </td>
-                  <td className="px-3 py-2 text-right text-green-600">
+                  <td className="px-3 py-2 text-right text-green-600 whitespace-nowrap">
                     {registro.debe ? formatearMoneda(registro.debe) : '-'}
                   </td>
-                  <td className="px-3 py-2 text-right text-red-600">
+                  <td className="px-3 py-2 text-right text-red-600 whitespace-nowrap">
                     {registro.haber ? formatearMoneda(registro.haber) : '-'}
+                  </td>
+                  <td className="px-2 py-2 text-center">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (registro.id) {
+                          onMoverRegistroASinAsignar(registro.id)
+                        }
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-yellow-100 rounded text-yellow-600 transition-opacity"
+                      title="Mover a sin asignar"
+                    >
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
                   </td>
                 </tr>
               ))}
-              {agrupacion.registros.length > 50 && (
+              {agrupacion.registros.length > 100 && (
                 <tr>
-                  <td colSpan={4} className="px-3 py-2 text-center text-gray-500 italic">
-                    ... y {agrupacion.registros.length - 50} registros mas
+                  <td colSpan={6} className="px-3 py-2 text-center text-gray-500 italic">
+                    ... y {agrupacion.registros.length - 100} registros mas
                   </td>
                 </tr>
               )}
@@ -160,19 +201,33 @@ export function AgrupacionesList() {
   const parentRef = useRef<HTMLDivElement>(null)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [draggedId, setDraggedId] = useState<string | null>(null)
+  const [filtro, setFiltro] = useState('')
 
   const {
     agrupaciones,
     agrupacionSeleccionada,
     setAgrupacionSeleccionada,
-    fusionarAgrupaciones
+    fusionarAgrupaciones,
+    moverAAgrupacion,
+    moverASinAsignar
   } = useAuditoriaStore()
+
+  // Filtrar agrupaciones
+  const agrupacionesFiltradas = useMemo(() => {
+    if (!filtro.trim()) return agrupaciones
+
+    const filtroLower = filtro.toLowerCase()
+    return agrupaciones.filter(a =>
+      a.razonSocial?.toLowerCase().includes(filtroLower) ||
+      a.variantes?.some(v => v.toLowerCase().includes(filtroLower))
+    )
+  }, [agrupaciones, filtro])
 
   // Virtualizer para lista larga
   const virtualizer = useVirtualizer({
-    count: agrupaciones.length,
+    count: agrupacionesFiltradas.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 80, // Altura estimada de cada item
+    estimateSize: () => 80,
     overscan: 5,
   })
 
@@ -190,6 +245,8 @@ export function AgrupacionesList() {
 
   const handleDragStart = (e: React.DragEvent, agrupacion: AgrupacionMayor) => {
     e.dataTransfer.setData('agrupacionId', agrupacion.id || '')
+    e.dataTransfer.setData('type', 'agrupacion')
+    e.dataTransfer.effectAllowed = 'move'
     setDraggedId(agrupacion.id || null)
   }
 
@@ -199,13 +256,28 @@ export function AgrupacionesList() {
 
   const handleDrop = (e: React.DragEvent, targetAgrupacion: AgrupacionMayor) => {
     e.preventDefault()
-    const sourceId = e.dataTransfer.getData('agrupacionId')
 
-    if (sourceId && sourceId !== targetAgrupacion.id) {
-      fusionarAgrupaciones(targetAgrupacion.id!, sourceId)
+    const type = e.dataTransfer.getData('type')
+
+    if (type === 'agrupacion') {
+      // Fusionar agrupaciones
+      const sourceId = e.dataTransfer.getData('agrupacionId')
+      if (sourceId && sourceId !== targetAgrupacion.id) {
+        fusionarAgrupaciones(targetAgrupacion.id!, sourceId)
+      }
+    } else if (type === 'registro') {
+      // Mover registro desde sin asignar
+      const registroId = e.dataTransfer.getData('registroId')
+      if (registroId && targetAgrupacion.id) {
+        moverAAgrupacion(registroId, targetAgrupacion.id)
+      }
     }
 
     setDraggedId(null)
+  }
+
+  const handleMoverRegistroASinAsignar = (agrupacionId: string, registroId: string) => {
+    moverASinAsignar(agrupacionId, registroId)
   }
 
   if (agrupaciones.length === 0) {
@@ -219,43 +291,76 @@ export function AgrupacionesList() {
   }
 
   return (
-    <div
-      ref={parentRef}
-      className="h-[600px] overflow-auto"
-    >
+    <div className="space-y-3">
+      {/* Buscador */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          placeholder="Buscar razon social..."
+          value={filtro}
+          onChange={(e) => setFiltro(e.target.value)}
+          className="w-full pl-10 pr-10 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+        />
+        {filtro && (
+          <button
+            onClick={() => setFiltro('')}
+            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Info de filtrado */}
+      {filtro && (
+        <p className="text-sm text-gray-500">
+          Mostrando {agrupacionesFiltradas.length} de {agrupaciones.length} agrupaciones
+        </p>
+      )}
+
+      {/* Lista virtualizada */}
       <div
-        style={{
-          height: `${virtualizer.getTotalSize()}px`,
-          width: '100%',
-          position: 'relative',
-        }}
+        ref={parentRef}
+        className="h-[600px] overflow-auto"
       >
-        {virtualizer.getVirtualItems().map((virtualItem) => {
-          const agrupacion = agrupaciones[virtualItem.index]
-          return (
-            <div
-              key={agrupacion.id || virtualItem.index}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                transform: `translateY(${virtualItem.start}px)`,
-              }}
-            >
-              <AgrupacionItem
-                agrupacion={agrupacion}
-                isSelected={agrupacionSeleccionada === agrupacion.id}
-                isExpanded={expandedIds.has(agrupacion.id || '')}
-                onSelect={() => setAgrupacionSeleccionada(agrupacion.id || null)}
-                onToggleExpand={() => toggleExpand(agrupacion.id || '')}
-                onDragStart={(e) => handleDragStart(e, agrupacion)}
-                onDragOver={handleDragOver}
-                onDrop={(e) => handleDrop(e, agrupacion)}
-              />
-            </div>
-          )
-        })}
+        <div
+          style={{
+            height: `${virtualizer.getTotalSize()}px`,
+            width: '100%',
+            position: 'relative',
+          }}
+        >
+          {virtualizer.getVirtualItems().map((virtualItem) => {
+            const agrupacion = agrupacionesFiltradas[virtualItem.index]
+            return (
+              <div
+                key={agrupacion.id || virtualItem.index}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  transform: `translateY(${virtualItem.start}px)`,
+                }}
+              >
+                <AgrupacionItem
+                  agrupacion={agrupacion}
+                  isSelected={agrupacionSeleccionada === agrupacion.id}
+                  isExpanded={expandedIds.has(agrupacion.id || '')}
+                  onSelect={() => setAgrupacionSeleccionada(agrupacion.id || null)}
+                  onToggleExpand={() => toggleExpand(agrupacion.id || '')}
+                  onDragStart={(e) => handleDragStart(e, agrupacion)}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, agrupacion)}
+                  onMoverRegistroASinAsignar={(registroId) =>
+                    handleMoverRegistroASinAsignar(agrupacion.id || '', registroId)
+                  }
+                />
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
