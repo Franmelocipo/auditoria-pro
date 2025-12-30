@@ -3,6 +3,8 @@ Servicio de procesamiento de archivos Excel y agrupación de registros.
 Optimizado para grandes volúmenes de datos usando Pandas.
 """
 import pandas as pd
+import numpy as np
+import math
 from io import BytesIO
 from typing import Any
 from datetime import datetime
@@ -13,6 +15,27 @@ from app.services.agrupacion import (
     calcular_similitud,
     generar_id_agrupacion
 )
+
+
+def limpiar_para_json(obj):
+    """Limpia valores que no son JSON serializables (NaN, Infinity)."""
+    if isinstance(obj, dict):
+        return {k: limpiar_para_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [limpiar_para_json(item) for item in obj]
+    elif isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    elif isinstance(obj, (np.integer, np.floating)):
+        if np.isnan(obj) or np.isinf(obj):
+            return None
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return limpiar_para_json(obj.tolist())
+    elif pd.isna(obj):
+        return None
+    return obj
 
 
 def procesar_excel(contenido: bytes, nombre_archivo: str) -> dict[str, Any]:
@@ -77,6 +100,9 @@ def procesar_excel(contenido: bytes, nombre_archivo: str) -> dict[str, Any]:
     df = df.where(pd.notna(df), None)
 
     registros = df.to_dict('records')
+
+    # Limpiar valores no serializables
+    registros = limpiar_para_json(registros)
 
     return {
         'registros': registros,
@@ -200,13 +226,17 @@ def agrupar_por_razon_social(
     total_debe = df['debe'].sum() if 'debe' in df.columns else 0
     total_haber = df['haber'].sum() if 'haber' in df.columns else 0
 
+    # Limpiar valores no serializables
+    agrupaciones = limpiar_para_json(agrupaciones)
+    sin_asignar = limpiar_para_json(sin_asignar)
+
     return {
         'agrupaciones': agrupaciones,
         'sin_asignar': sin_asignar,
         'totales': {
-            'debe': round(total_debe, 2),
-            'haber': round(total_haber, 2),
-            'saldo': round(total_debe - total_haber, 2)
+            'debe': round(float(total_debe) if not pd.isna(total_debe) else 0, 2),
+            'haber': round(float(total_haber) if not pd.isna(total_haber) else 0, 2),
+            'saldo': round(float(total_debe - total_haber) if not pd.isna(total_debe - total_haber) else 0, 2)
         },
         'estadisticas': {
             'total_registros': len(registros),
