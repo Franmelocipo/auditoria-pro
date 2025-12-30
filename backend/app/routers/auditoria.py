@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Body, Request
 from fastapi.responses import JSONResponse
 from typing import Optional, Any
+import math
 
 from app.config import get_settings, Settings
 from app.schemas.auditoria import (
@@ -114,15 +115,41 @@ async def obtener_conciliacion(
         raise HTTPException(status_code=500, detail=f"Error al obtener conciliación: {str(e)}")
 
 
+def limpiar_valores_json(obj):
+    """Limpia valores que no son válidos en JSON (NaN, Infinity)"""
+    if isinstance(obj, dict):
+        return {k: limpiar_valores_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [limpiar_valores_json(item) for item in obj]
+    elif isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return 0
+        return obj
+    return obj
+
+
 @router.post("/conciliaciones")
 async def crear_conciliacion(
-    conciliacion: ConciliacionCreate,
+    request: Request,
     supabase = Depends(require_supabase)
 ):
     """Crea o actualiza una conciliación de mayores"""
     try:
-        registros = conciliacion.registros or []
-        agrupaciones = conciliacion.agrupaciones or []
+        # Leer body raw para evitar problemas con Pydantic y valores NaN
+        body = await request.json()
+
+        nombre = body.get("nombre")
+        if not nombre:
+            raise HTTPException(status_code=400, detail="El nombre es requerido")
+
+        cliente_id = body.get("cliente_id")
+        registros = body.get("registros", [])
+        agrupaciones = body.get("agrupaciones", [])
+        conciliacion_id_existente = body.get("id")
+
+        # Limpiar valores NaN/Infinity
+        registros = limpiar_valores_json(registros)
+        agrupaciones = limpiar_valores_json(agrupaciones)
 
         # Determinar si guardar en tablas auxiliares
         guardar_registros_separado = len(registros) > 10000
@@ -130,8 +157,8 @@ async def crear_conciliacion(
 
         # Datos principales
         data_principal = {
-            "nombre": conciliacion.nombre,
-            "cliente_id": conciliacion.cliente_id,
+            "nombre": nombre,
+            "cliente_id": cliente_id,
             "registros_count": len(registros),
             "agrupaciones_count": len(agrupaciones),
             "registros_guardados_separado": guardar_registros_separado,
@@ -139,17 +166,17 @@ async def crear_conciliacion(
         }
 
         if not guardar_registros_separado:
-            data_principal["registros"] = [r.model_dump() if hasattr(r, 'model_dump') else r for r in registros]
+            data_principal["registros"] = registros
 
         if not guardar_agrupaciones_separado:
-            data_principal["agrupaciones"] = [a.model_dump() if hasattr(a, 'model_dump') else a for a in agrupaciones]
+            data_principal["agrupaciones"] = agrupaciones
 
         # Guardar o actualizar
-        if conciliacion.id:
+        if conciliacion_id_existente:
             result = supabase.table("conciliaciones_mayor").update(
                 data_principal
-            ).eq("id", conciliacion.id).execute()
-            conciliacion_id = conciliacion.id
+            ).eq("id", conciliacion_id_existente).execute()
+            conciliacion_id = conciliacion_id_existente
         else:
             result = supabase.table("conciliaciones_mayor").insert(
                 data_principal
@@ -158,18 +185,16 @@ async def crear_conciliacion(
 
         # Guardar registros en tabla auxiliar si es necesario
         if guardar_registros_separado:
-            registros_data = [r.model_dump() if hasattr(r, 'model_dump') else r for r in registros]
             supabase.table("registros_mayor_detalle").upsert({
                 "conciliacion_id": conciliacion_id,
-                "registros": registros_data
+                "registros": registros
             }).execute()
 
         # Guardar agrupaciones en tabla auxiliar si es necesario
         if guardar_agrupaciones_separado:
-            agrupaciones_data = [a.model_dump() if hasattr(a, 'model_dump') else a for a in agrupaciones]
             supabase.table("agrupaciones_mayor_detalle").upsert({
                 "conciliacion_id": conciliacion_id,
-                "agrupaciones": agrupaciones_data
+                "agrupaciones": agrupaciones
             }).execute()
 
         return {
