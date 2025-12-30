@@ -2,11 +2,13 @@ export interface RegistroMayor {
   id?: string
   fecha?: string
   concepto?: string
+  descripcion?: string
   debe?: number
   haber?: number
   saldo?: number
   cuenta?: string
   comprobante?: string
+  razonSocial?: string
   [key: string]: any
 }
 
