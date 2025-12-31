@@ -72,6 +72,8 @@ interface AuditoriaState {
   fusionarAgrupaciones: (destinoId: string, origenId: string) => void
   moverASinAsignar: (agrupacionId: string, registroId: string) => void
   moverAAgrupacion: (registroId: string, agrupacionId: string) => void
+  moverRegistrosASinAsignar: (agrupacionId: string, registroIds: string[]) => void
+  moverRegistrosAOtraAgrupacion: (origenId: string, destinoId: string, registroIds: string[]) => void
   reasignarSaldo: (tipo: 'inicio' | 'cierre', razonSocialOrigen: string, razonSocialDestino: string) => void
   limpiar: () => void
 
@@ -293,6 +295,105 @@ export const useAuditoriaStore = create<AuditoriaState>((set, get) => ({
     set({
       agrupaciones: nuevasAgrupaciones,
       sinAsignar: nuevoSinAsignar,
+      totales: nuevosTotales,
+      estadisticas: nuevasEstadisticas
+    })
+  },
+
+  // Mover múltiples registros a sin asignar
+  moverRegistrosASinAsignar: (agrupacionId, registroIds) => {
+    const { agrupaciones, sinAsignar, registros } = get()
+
+    const registroIdsSet = new Set(registroIds)
+    const registrosMovidos: RegistroMayor[] = []
+
+    const nuevasAgrupaciones = agrupaciones.map(a => {
+      if (a.id === agrupacionId) {
+        const registrosAMover = a.registros?.filter(r => r.id && registroIdsSet.has(r.id)) || []
+        registrosMovidos.push(...registrosAMover)
+
+        const nuevosRegistros = a.registros?.filter(r => !r.id || !registroIdsSet.has(r.id)) || []
+        const totalDebe = nuevosRegistros.reduce((sum, r) => sum + (r.debe || 0), 0)
+        const totalHaber = nuevosRegistros.reduce((sum, r) => sum + (r.haber || 0), 0)
+        return {
+          ...a,
+          registros: nuevosRegistros,
+          cantidad: nuevosRegistros.length,
+          totalDebe,
+          totalHaber,
+          saldo: totalDebe - totalHaber,
+        }
+      }
+      return a
+    }).filter(a => (a.registros?.length || 0) > 0)
+
+    if (registrosMovidos.length > 0) {
+      const nuevoSinAsignar = [...sinAsignar, ...registrosMovidos]
+      const nuevosTotales = calcularTotales(nuevasAgrupaciones, nuevoSinAsignar)
+      const nuevasEstadisticas = calcularEstadisticas(registros, nuevasAgrupaciones, nuevoSinAsignar)
+
+      set({
+        agrupaciones: nuevasAgrupaciones,
+        sinAsignar: nuevoSinAsignar,
+        totales: nuevosTotales,
+        estadisticas: nuevasEstadisticas
+      })
+    }
+  },
+
+  // Mover múltiples registros de una agrupación a otra
+  moverRegistrosAOtraAgrupacion: (origenId, destinoId, registroIds) => {
+    const { agrupaciones, sinAsignar, registros } = get()
+
+    if (origenId === destinoId) return
+
+    const registroIdsSet = new Set(registroIds)
+    let registrosAMover: RegistroMayor[] = []
+
+    // Primera pasada: extraer registros del origen
+    const agrupacionesTemporal = agrupaciones.map(a => {
+      if (a.id === origenId) {
+        registrosAMover = a.registros?.filter(r => r.id && registroIdsSet.has(r.id)) || []
+        const nuevosRegistros = a.registros?.filter(r => !r.id || !registroIdsSet.has(r.id)) || []
+        const totalDebe = nuevosRegistros.reduce((sum, r) => sum + (r.debe || 0), 0)
+        const totalHaber = nuevosRegistros.reduce((sum, r) => sum + (r.haber || 0), 0)
+        return {
+          ...a,
+          registros: nuevosRegistros,
+          cantidad: nuevosRegistros.length,
+          totalDebe,
+          totalHaber,
+          saldo: totalDebe - totalHaber,
+        }
+      }
+      return a
+    })
+
+    if (registrosAMover.length === 0) return
+
+    // Segunda pasada: agregar al destino
+    const nuevasAgrupaciones = agrupacionesTemporal.map(a => {
+      if (a.id === destinoId) {
+        const nuevosRegistros = [...(a.registros || []), ...registrosAMover]
+        const totalDebe = nuevosRegistros.reduce((sum, r) => sum + (r.debe || 0), 0)
+        const totalHaber = nuevosRegistros.reduce((sum, r) => sum + (r.haber || 0), 0)
+        return {
+          ...a,
+          registros: nuevosRegistros,
+          cantidad: nuevosRegistros.length,
+          totalDebe,
+          totalHaber,
+          saldo: totalDebe - totalHaber,
+        }
+      }
+      return a
+    }).filter(a => (a.registros?.length || 0) > 0)
+
+    const nuevosTotales = calcularTotales(nuevasAgrupaciones, sinAsignar)
+    const nuevasEstadisticas = calcularEstadisticas(registros, nuevasAgrupaciones, sinAsignar)
+
+    set({
+      agrupaciones: nuevasAgrupaciones,
       totales: nuevosTotales,
       estadisticas: nuevasEstadisticas
     })
