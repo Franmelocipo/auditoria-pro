@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState, useCallback, useMemo } from 'react'
-import { ChevronDown, ChevronRight, GripVertical, Users, Search, X, ArrowRight, Check, Square, CheckSquare, Trash2, ArrowUpDown, ArrowUp, ArrowDown, Filter } from 'lucide-react'
+import { ChevronDown, ChevronRight, GripVertical, Users, Search, X, ArrowRight, Check, Square, CheckSquare, Trash2, ArrowUpDown, ArrowUp, ArrowDown, Filter, Plus } from 'lucide-react'
 import { useAuditoriaStore } from '@/stores/auditoriaStore'
 import { AgrupacionMayor, RegistroMayor } from '@/types/auditoria'
 
@@ -529,6 +529,9 @@ export function AgrupacionesList() {
   // Modal para mover a otra agrupación
   const [modalMoverAbierto, setModalMoverAbierto] = useState<string | null>(null)
   const [busquedaDestino, setBusquedaDestino] = useState('')
+  // Estado para crear nueva agrupación
+  const [mostrarNuevaAgrupacion, setMostrarNuevaAgrupacion] = useState(false)
+  const [nombreNuevaAgrupacion, setNombreNuevaAgrupacion] = useState('')
 
   const LIMITE_INICIAL = 50
 
@@ -540,8 +543,17 @@ export function AgrupacionesList() {
     moverAAgrupacion,
     moverASinAsignar,
     moverRegistrosASinAsignar,
-    moverRegistrosAOtraAgrupacion
+    moverRegistrosAOtraAgrupacion,
+    crearNuevaAgrupacion
   } = useAuditoriaStore()
+
+  const handleCrearAgrupacion = () => {
+    if (nombreNuevaAgrupacion.trim()) {
+      crearNuevaAgrupacion(nombreNuevaAgrupacion.trim())
+      setNombreNuevaAgrupacion('')
+      setMostrarNuevaAgrupacion(false)
+    }
+  }
 
   // Asegurar que cada agrupación tenga un ID único
   const agrupacionesConId = useMemo(() => {
@@ -758,25 +770,79 @@ export function AgrupacionesList() {
         </div>
       )}
 
-      {/* Buscador */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <input
-          type="text"
-          placeholder="Buscar razon social..."
-          value={filtro}
-          onChange={(e) => setFiltro(e.target.value)}
-          className="w-full pl-10 pr-10 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-        />
-        {filtro && (
-          <button
-            onClick={() => setFiltro('')}
-            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        )}
+      {/* Buscador y botón nueva agrupación */}
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Buscar razon social..."
+            value={filtro}
+            onChange={(e) => setFiltro(e.target.value)}
+            className="w-full pl-10 pr-10 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          />
+          {filtro && (
+            <button
+              onClick={() => setFiltro('')}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+        <button
+          onClick={() => setMostrarNuevaAgrupacion(true)}
+          className="flex items-center gap-2 px-3 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm whitespace-nowrap"
+        >
+          <Plus className="w-4 h-4" />
+          Nueva Agrupación
+        </button>
       </div>
+
+      {/* Modal para crear nueva agrupación */}
+      {mostrarNuevaAgrupacion && (
+        <div className="p-3 bg-primary-50 border border-primary-200 rounded-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm font-medium text-primary-700">Crear nueva agrupación:</span>
+            <button
+              onClick={() => {
+                setMostrarNuevaAgrupacion(false)
+                setNombreNuevaAgrupacion('')
+              }}
+              className="ml-auto p-1 hover:bg-primary-100 rounded"
+            >
+              <X className="w-4 h-4 text-primary-600" />
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Nombre de la razón social..."
+              value={nombreNuevaAgrupacion}
+              onChange={(e) => setNombreNuevaAgrupacion(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleCrearAgrupacion()
+                if (e.key === 'Escape') {
+                  setMostrarNuevaAgrupacion(false)
+                  setNombreNuevaAgrupacion('')
+                }
+              }}
+              className="flex-1 px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-primary-500"
+              autoFocus
+            />
+            <button
+              onClick={handleCrearAgrupacion}
+              disabled={!nombreNuevaAgrupacion.trim()}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+            >
+              Crear
+            </button>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Después de crear la agrupación, podrás arrastrar registros desde "Sin Asignar" o desde otras agrupaciones.
+          </p>
+        </div>
+      )}
 
       {/* Info de filtrado */}
       {filtro && (
