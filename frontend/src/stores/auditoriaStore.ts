@@ -86,8 +86,21 @@ interface AuditoriaState {
 
 const initialTotales: Totales = { debe: 0, haber: 0, saldo: 0 }
 
-// Función para recalcular totales desde agrupaciones y sin asignar
-function calcularTotales(agrupaciones: AgrupacionMayor[], sinAsignar: RegistroMayor[]): Totales {
+// Función para recalcular totales desde registros principales (más preciso)
+function calcularTotalesDesdeRegistros(registros: RegistroMayor[]): Totales {
+  let debe = 0
+  let haber = 0
+
+  registros.forEach(r => {
+    debe += r.debe || 0
+    haber += r.haber || 0
+  })
+
+  return { debe, haber, saldo: debe - haber }
+}
+
+// Función alternativa para calcular desde agrupaciones y sin asignar
+function calcularTotalesDesdeAgrupaciones(agrupaciones: AgrupacionMayor[], sinAsignar: RegistroMayor[]): Totales {
   let debe = 0
   let haber = 0
 
@@ -178,7 +191,12 @@ export const useAuditoriaStore = create<AuditoriaState>((set, get) => ({
       return a
     })
 
-    const nuevosTotales = calcularTotales(agrupacionesRecalculadas, sinAsignar)
+    // Calcular totales desde registros principales (más preciso, incluye todos los registros)
+    // Si hay registros, usar esos; si no, calcular desde agrupaciones
+    const nuevosTotales = registros.length > 0
+      ? calcularTotalesDesdeRegistros(registros)
+      : calcularTotalesDesdeAgrupaciones(agrupacionesRecalculadas, sinAsignar)
+
     const nuevasEstadisticas = calcularEstadisticas(registros, agrupacionesRecalculadas, sinAsignar)
 
     set({
@@ -269,7 +287,10 @@ export const useAuditoriaStore = create<AuditoriaState>((set, get) => ({
       return a
     }).filter(a => a.id !== origenId)
 
-    const nuevosTotales = calcularTotales(nuevasAgrupaciones, sinAsignar)
+    // Totales se calculan desde registros principales (no cambian al fusionar)
+    const nuevosTotales = registros.length > 0
+      ? calcularTotalesDesdeRegistros(registros)
+      : calcularTotalesDesdeAgrupaciones(nuevasAgrupaciones, sinAsignar)
     const nuevasEstadisticas = calcularEstadisticas(registros, nuevasAgrupaciones, sinAsignar)
 
     set({
@@ -308,7 +329,10 @@ export const useAuditoriaStore = create<AuditoriaState>((set, get) => ({
 
     if (registroMovido) {
       const nuevoSinAsignar = [...sinAsignar, registroMovido]
-      const nuevosTotales = calcularTotales(nuevasAgrupaciones, nuevoSinAsignar)
+      // Totales desde registros principales (no cambian al mover entre grupos)
+      const nuevosTotales = registros.length > 0
+        ? calcularTotalesDesdeRegistros(registros)
+        : calcularTotalesDesdeAgrupaciones(nuevasAgrupaciones, nuevoSinAsignar)
       const nuevasEstadisticas = calcularEstadisticas(registros, nuevasAgrupaciones, nuevoSinAsignar)
 
       set({
@@ -345,7 +369,10 @@ export const useAuditoriaStore = create<AuditoriaState>((set, get) => ({
     })
 
     const nuevoSinAsignar = sinAsignar.filter(r => r.id !== registroId)
-    const nuevosTotales = calcularTotales(nuevasAgrupaciones, nuevoSinAsignar)
+    // Totales desde registros principales (no cambian al mover entre grupos)
+    const nuevosTotales = registros.length > 0
+      ? calcularTotalesDesdeRegistros(registros)
+      : calcularTotalesDesdeAgrupaciones(nuevasAgrupaciones, nuevoSinAsignar)
     const nuevasEstadisticas = calcularEstadisticas(registros, nuevasAgrupaciones, nuevoSinAsignar)
 
     set({
@@ -385,7 +412,10 @@ export const useAuditoriaStore = create<AuditoriaState>((set, get) => ({
 
     if (registrosMovidos.length > 0) {
       const nuevoSinAsignar = [...sinAsignar, ...registrosMovidos]
-      const nuevosTotales = calcularTotales(nuevasAgrupaciones, nuevoSinAsignar)
+      // Totales desde registros principales (no cambian al mover entre grupos)
+      const nuevosTotales = registros.length > 0
+        ? calcularTotalesDesdeRegistros(registros)
+        : calcularTotalesDesdeAgrupaciones(nuevasAgrupaciones, nuevoSinAsignar)
       const nuevasEstadisticas = calcularEstadisticas(registros, nuevasAgrupaciones, nuevoSinAsignar)
 
       set({
@@ -445,7 +475,10 @@ export const useAuditoriaStore = create<AuditoriaState>((set, get) => ({
       return a
     }).filter(a => (a.registros?.length || 0) > 0)
 
-    const nuevosTotales = calcularTotales(nuevasAgrupaciones, sinAsignar)
+    // Totales desde registros principales (no cambian al mover entre grupos)
+    const nuevosTotales = registros.length > 0
+      ? calcularTotalesDesdeRegistros(registros)
+      : calcularTotalesDesdeAgrupaciones(nuevasAgrupaciones, sinAsignar)
     const nuevasEstadisticas = calcularEstadisticas(registros, nuevasAgrupaciones, sinAsignar)
 
     set({
