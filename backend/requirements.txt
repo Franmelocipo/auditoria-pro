@@ -3,8 +3,9 @@ fastapi==0.109.0
 uvicorn[standard]==0.27.0
 python-multipart==0.0.6
 
-# Base de datos - usar versión estable de supabase
-supabase==1.2.0
+# Base de datos - usar versión con soporte de timeout
+supabase>=2.0.0
+httpx>=0.25.0
 python-dotenv==1.0.0
 
 # Procesamiento de datos
