@@ -165,7 +165,7 @@ async def crear_conciliacion(
         guardar_registros_separado = len(registros) > 10000
         guardar_agrupaciones_separado = len(agrupaciones) > 1000
 
-        # Datos principales
+        # Datos principales (sin saldos primero para compatibilidad)
         data_principal = {
             "nombre": nombre,
             "cliente_id": cliente_id,
@@ -173,8 +173,6 @@ async def crear_conciliacion(
             "agrupaciones_count": len(agrupaciones),
             "registros_guardados_separado": guardar_registros_separado,
             "agrupaciones_guardadas_separado": guardar_agrupaciones_separado,
-            "saldos_inicio": saldos_inicio,
-            "saldos_cierre": saldos_cierre,
         }
 
         if not guardar_registros_separado:
@@ -183,17 +181,45 @@ async def crear_conciliacion(
         if not guardar_agrupaciones_separado:
             data_principal["agrupaciones"] = agrupaciones
 
-        # Guardar o actualizar
-        if conciliacion_id_existente:
-            result = supabase.table("conciliaciones_mayor").update(
-                data_principal
-            ).eq("id", conciliacion_id_existente).execute()
-            conciliacion_id = conciliacion_id_existente
-        else:
-            result = supabase.table("conciliaciones_mayor").insert(
-                data_principal
-            ).execute()
-            conciliacion_id = result.data[0]["id"]
+        # Intentar agregar saldos (puede fallar si columnas no existen)
+        saldos_guardados = False
+        try:
+            data_con_saldos = {
+                **data_principal,
+                "saldos_inicio": saldos_inicio,
+                "saldos_cierre": saldos_cierre,
+            }
+
+            if conciliacion_id_existente:
+                result = supabase.table("conciliaciones_mayor").update(
+                    data_con_saldos
+                ).eq("id", conciliacion_id_existente).execute()
+                conciliacion_id = conciliacion_id_existente
+            else:
+                result = supabase.table("conciliaciones_mayor").insert(
+                    data_con_saldos
+                ).execute()
+                conciliacion_id = result.data[0]["id"]
+
+            saldos_guardados = True
+
+        except Exception as e:
+            error_msg = str(e).lower()
+            # Si el error es por columnas que no existen, guardar sin saldos
+            if "column" in error_msg or "saldos" in error_msg or "undefined" in error_msg:
+                print(f"Advertencia: No se pudieron guardar saldos, guardando sin ellos: {e}")
+                if conciliacion_id_existente:
+                    result = supabase.table("conciliaciones_mayor").update(
+                        data_principal
+                    ).eq("id", conciliacion_id_existente).execute()
+                    conciliacion_id = conciliacion_id_existente
+                else:
+                    result = supabase.table("conciliaciones_mayor").insert(
+                        data_principal
+                    ).execute()
+                    conciliacion_id = result.data[0]["id"]
+            else:
+                raise e
 
         # Guardar registros en tabla auxiliar si es necesario
         if guardar_registros_separado:
@@ -209,13 +235,18 @@ async def crear_conciliacion(
                 "agrupaciones": agrupaciones
             }).execute()
 
-        return {
+        response = {
             "success": True,
             "id": conciliacion_id,
             "message": "Conciliacion guardada correctamente",
             "registros_count": len(registros),
             "agrupaciones_count": len(agrupaciones)
         }
+
+        if not saldos_guardados and (saldos_inicio or saldos_cierre):
+            response["warning"] = "Los saldos no se guardaron. Ejecute en Supabase: ALTER TABLE conciliaciones_mayor ADD COLUMN saldos_inicio JSONB DEFAULT '[]', ADD COLUMN saldos_cierre JSONB DEFAULT '[]';"
+
+        return response
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al guardar conciliacion: {str(e)}")
