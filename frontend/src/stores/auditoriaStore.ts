@@ -50,6 +50,8 @@ interface AuditoriaState {
   setSinAsignar: (sinAsignar: RegistroMayor[]) => void
   setTotales: (totales: Totales) => void
   setEstadisticas: (estadisticas: Estadisticas) => void
+  recalcularTotalesAgrupaciones: () => void
+  crearNuevaAgrupacion: (nombre: string) => void
 
   // Actions - Saldos
   setSaldosInicio: (saldos: SaldoRazonSocial[]) => void
@@ -155,6 +157,60 @@ export const useAuditoriaStore = create<AuditoriaState>((set, get) => ({
   setConciliacionActual: (conciliacion) => set({ conciliacionActual: conciliacion }),
   setAgrupacionSeleccionada: (id) => set({ agrupacionSeleccionada: id }),
   setTabActiva: (tab) => set({ tabActiva: tab }),
+
+  // Recalcular totales de agrupaciones basándose en registros
+  recalcularTotalesAgrupaciones: () => {
+    const { agrupaciones, sinAsignar, registros } = get()
+
+    // Recalcular totalDebe y totalHaber de cada agrupación basándose en sus registros
+    const agrupacionesRecalculadas = agrupaciones.map(a => {
+      if (a.registros && a.registros.length > 0) {
+        const totalDebe = a.registros.reduce((sum, r) => sum + (r.debe || 0), 0)
+        const totalHaber = a.registros.reduce((sum, r) => sum + (r.haber || 0), 0)
+        return {
+          ...a,
+          totalDebe,
+          totalHaber,
+          saldo: totalDebe - totalHaber,
+          cantidad: a.registros.length,
+        }
+      }
+      return a
+    })
+
+    const nuevosTotales = calcularTotales(agrupacionesRecalculadas, sinAsignar)
+    const nuevasEstadisticas = calcularEstadisticas(registros, agrupacionesRecalculadas, sinAsignar)
+
+    set({
+      agrupaciones: agrupacionesRecalculadas,
+      totales: nuevosTotales,
+      estadisticas: nuevasEstadisticas,
+    })
+  },
+
+  // Crear nueva agrupación vacía
+  crearNuevaAgrupacion: (nombre) => {
+    const { agrupaciones, sinAsignar, registros } = get()
+
+    const nuevaAgrupacion: AgrupacionMayor = {
+      id: `agrup-nuevo-${Date.now()}`,
+      razonSocial: nombre,
+      registros: [],
+      cantidad: 0,
+      totalDebe: 0,
+      totalHaber: 0,
+      saldo: 0,
+      variantes: [nombre],
+    }
+
+    const nuevasAgrupaciones = [...agrupaciones, nuevaAgrupacion]
+    const nuevasEstadisticas = calcularEstadisticas(registros, nuevasAgrupaciones, sinAsignar)
+
+    set({
+      agrupaciones: nuevasAgrupaciones,
+      estadisticas: nuevasEstadisticas,
+    })
+  },
 
   // Setters de saldos
   setSaldosInicio: (saldos) => set({ saldosInicio: saldos }),

@@ -61,6 +61,7 @@ export default function AuditoriaPage() {
     setTabActiva,
     setSaldosInicio,
     setSaldosCierre,
+    recalcularTotalesAgrupaciones,
   } = useAuditoriaStore()
 
   const tieneData = registros.length > 0 || agrupaciones.length > 0
@@ -165,6 +166,12 @@ export default function AuditoriaPage() {
       if (data.saldosInicio) setSaldosInicio(data.saldosInicio)
       if (data.saldosCierre) setSaldosCierre(data.saldosCierre)
       setModoNuevo(false)
+
+      // Recalcular totales después de cargar para asegurar consistencia
+      // Usamos setTimeout para asegurar que el estado se actualice primero
+      setTimeout(() => {
+        recalcularTotalesAgrupaciones()
+      }, 100)
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar')
