@@ -231,7 +231,12 @@ export default function AuditoriaPage() {
         }
       }
 
-      alert(`Conciliacion guardada correctamente`)
+      // Mostrar mensaje con advertencia si corresponde
+      let mensaje = 'Conciliacion guardada correctamente'
+      if (data.warning) {
+        mensaje += `\n\nADVERTENCIA: ${data.warning}`
+      }
+      alert(mensaje)
 
     } catch (err) {
       clearTimeout(timeoutId)
