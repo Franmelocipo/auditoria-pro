@@ -402,127 +402,125 @@ export function CuadroComparativo() {
 
       {/* Tabla */}
       <div className="bg-white rounded-lg border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <HeaderCell field="razonSocial" label="Razon Social" align="left" />
-                <HeaderCell field="saldoInicio" label="Saldo Inicio" />
-                <HeaderCell field="debe" label="Debe" />
-                <HeaderCell field="haber" label="Haber" />
-                <HeaderCell field="saldoCalculado" label="Saldo Calc." className="bg-blue-50" />
-                <HeaderCell field="ajusteAuditoria" label="Ajuste Aud." />
-                <HeaderCell field="saldoReportado" label="Saldo Report." />
-                <HeaderCell field="diferencia" label="Diferencia" />
-                <HeaderCell field="estado" label="Estado" align="center" />
-                <th className="px-4 py-3 text-center font-medium text-gray-700 w-20">Acc.</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {filasFiltradas.map((fila) => (
-                <tr key={fila.razonSocial} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-900 max-w-xs truncate" title={fila.razonSocial}>
-                    {fila.razonSocial}
-                    {fila.notaAjuste && (
-                      <span className="ml-2 text-blue-500" title={fila.notaAjuste}>
-                        <MessageSquare className="w-3 h-3 inline" />
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right text-gray-600">
-                    {formatearMoneda(fila.saldoInicio)}
-                  </td>
-                  <td className="px-4 py-3 text-right text-green-600">
-                    {formatearMoneda(fila.debe)}
-                  </td>
-                  <td className="px-4 py-3 text-right text-red-600">
-                    {formatearMoneda(fila.haber)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-medium text-blue-600 bg-blue-50">
-                    {formatearMoneda(fila.saldoCalculado)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {editandoAjuste === fila.razonSocial ? (
-                      <div className="flex flex-col gap-1">
-                        <input
-                          type="number"
-                          value={ajusteTemp}
-                          onChange={(e) => setAjusteTemp(parseFloat(e.target.value) || 0)}
-                          className="w-24 px-2 py-1 border rounded text-right text-xs"
-                          step="0.01"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Nota..."
-                          value={notaTemp}
-                          onChange={(e) => setNotaTemp(e.target.value)}
-                          className="w-24 px-2 py-1 border rounded text-xs"
-                        />
-                      </div>
-                    ) : (
-                      <span className={fila.ajusteAuditoria !== 0 ? 'text-orange-600 font-medium' : 'text-gray-400'}>
-                        {formatearMoneda(fila.ajusteAuditoria)}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right text-gray-600">
-                    {formatearMoneda(fila.saldoReportado)}
-                  </td>
-                  <td className={`px-4 py-3 text-right font-medium ${
-                    Math.abs(fila.diferencia) > 0.01 ? 'text-red-600' : 'text-green-600'
-                  }`}>
-                    {formatearMoneda(fila.diferencia)}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    {getEstadoBadge(fila.estado)}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    {editandoAjuste === fila.razonSocial ? (
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          onClick={handleGuardarAjuste}
-                          className="p-1 text-green-600 hover:bg-green-50 rounded"
-                        >
-                          <Check className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={handleCancelarAjuste}
-                          className="p-1 text-red-600 hover:bg-red-50 rounded"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => handleEditarAjuste(fila)}
-                        className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
-                        title="Agregar ajuste"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot className="bg-gray-100 border-t-2 font-medium">
-              <tr>
-                <td className="px-4 py-3 text-gray-700">TOTALES</td>
-                <td className="px-4 py-3 text-right">{formatearMoneda(totalesFiltrados.saldoInicio)}</td>
-                <td className="px-4 py-3 text-right text-green-600">{formatearMoneda(totalesFiltrados.debe)}</td>
-                <td className="px-4 py-3 text-right text-red-600">{formatearMoneda(totalesFiltrados.haber)}</td>
-                <td className="px-4 py-3 text-right text-blue-600 bg-blue-50">{formatearMoneda(totalesFiltrados.saldoCalculado)}</td>
-                <td className="px-4 py-3 text-right text-orange-600">{formatearMoneda(totalesFiltrados.ajusteAuditoria)}</td>
-                <td className="px-4 py-3 text-right">{formatearMoneda(totalesFiltrados.saldoReportado)}</td>
-                <td className={`px-4 py-3 text-right ${Math.abs(totalesFiltrados.diferencia) > 0.01 ? 'text-red-600' : 'text-green-600'}`}>
-                  {formatearMoneda(totalesFiltrados.diferencia)}
+        <table className="w-full text-xs table-fixed">
+          <thead className="bg-gray-50 border-b">
+            <tr>
+              <HeaderCell field="razonSocial" label="Razón Social" align="left" className="w-[20%]" />
+              <HeaderCell field="saldoInicio" label="S. Inicio" className="w-[10%]" />
+              <HeaderCell field="debe" label="Debe" className="w-[10%]" />
+              <HeaderCell field="haber" label="Haber" className="w-[10%]" />
+              <HeaderCell field="saldoCalculado" label="S. Calc." className="w-[10%] bg-blue-50" />
+              <HeaderCell field="ajusteAuditoria" label="Ajuste" className="w-[10%]" />
+              <HeaderCell field="saldoReportado" label="S. Report." className="w-[10%]" />
+              <HeaderCell field="diferencia" label="Diferencia" className="w-[10%]" />
+              <HeaderCell field="estado" label="Estado" align="center" className="w-[6%]" />
+              <th className="px-2 py-2 text-center font-medium text-gray-700 w-[4%]">Acc.</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {filasFiltradas.map((fila) => (
+              <tr key={fila.razonSocial} className="hover:bg-gray-50">
+                <td className="px-2 py-2 font-medium text-gray-900 truncate" title={fila.razonSocial}>
+                  {fila.razonSocial}
+                  {fila.notaAjuste && (
+                    <span className="ml-1 text-blue-500" title={fila.notaAjuste}>
+                      <MessageSquare className="w-3 h-3 inline" />
+                    </span>
+                  )}
                 </td>
-                <td></td>
-                <td></td>
+                <td className="px-2 py-2 text-right text-gray-600 truncate">
+                  {formatearMoneda(fila.saldoInicio)}
+                </td>
+                <td className="px-2 py-2 text-right text-green-600 truncate">
+                  {formatearMoneda(fila.debe)}
+                </td>
+                <td className="px-2 py-2 text-right text-red-600 truncate">
+                  {formatearMoneda(fila.haber)}
+                </td>
+                <td className="px-2 py-2 text-right font-medium text-blue-600 bg-blue-50 truncate">
+                  {formatearMoneda(fila.saldoCalculado)}
+                </td>
+                <td className="px-2 py-2 text-right">
+                  {editandoAjuste === fila.razonSocial ? (
+                    <div className="flex flex-col gap-1">
+                      <input
+                        type="number"
+                        value={ajusteTemp}
+                        onChange={(e) => setAjusteTemp(parseFloat(e.target.value) || 0)}
+                        className="w-full px-1 py-0.5 border rounded text-right text-xs"
+                        step="0.01"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Nota..."
+                        value={notaTemp}
+                        onChange={(e) => setNotaTemp(e.target.value)}
+                        className="w-full px-1 py-0.5 border rounded text-xs"
+                      />
+                    </div>
+                  ) : (
+                    <span className={`truncate ${fila.ajusteAuditoria !== 0 ? 'text-orange-600 font-medium' : 'text-gray-400'}`}>
+                      {formatearMoneda(fila.ajusteAuditoria)}
+                    </span>
+                  )}
+                </td>
+                <td className="px-2 py-2 text-right text-gray-600 truncate">
+                  {formatearMoneda(fila.saldoReportado)}
+                </td>
+                <td className={`px-2 py-2 text-right font-medium truncate ${
+                  Math.abs(fila.diferencia) > 0.01 ? 'text-red-600' : 'text-green-600'
+                }`}>
+                  {formatearMoneda(fila.diferencia)}
+                </td>
+                <td className="px-2 py-2 text-center">
+                  {getEstadoBadge(fila.estado)}
+                </td>
+                <td className="px-1 py-2 text-center">
+                  {editandoAjuste === fila.razonSocial ? (
+                    <div className="flex items-center justify-center gap-0.5">
+                      <button
+                        onClick={handleGuardarAjuste}
+                        className="p-0.5 text-green-600 hover:bg-green-50 rounded"
+                      >
+                        <Check className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={handleCancelarAjuste}
+                        className="p-0.5 text-red-600 hover:bg-red-50 rounded"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleEditarAjuste(fila)}
+                      className="p-0.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                      title="Agregar ajuste"
+                    >
+                      <Edit2 className="w-3 h-3" />
+                    </button>
+                  )}
+                </td>
               </tr>
-            </tfoot>
-          </table>
-        </div>
+            ))}
+          </tbody>
+          <tfoot className="bg-gray-100 border-t-2 font-medium text-xs">
+            <tr>
+              <td className="px-2 py-2 text-gray-700">TOTALES</td>
+              <td className="px-2 py-2 text-right truncate">{formatearMoneda(totalesFiltrados.saldoInicio)}</td>
+              <td className="px-2 py-2 text-right text-green-600 truncate">{formatearMoneda(totalesFiltrados.debe)}</td>
+              <td className="px-2 py-2 text-right text-red-600 truncate">{formatearMoneda(totalesFiltrados.haber)}</td>
+              <td className="px-2 py-2 text-right text-blue-600 bg-blue-50 truncate">{formatearMoneda(totalesFiltrados.saldoCalculado)}</td>
+              <td className="px-2 py-2 text-right text-orange-600 truncate">{formatearMoneda(totalesFiltrados.ajusteAuditoria)}</td>
+              <td className="px-2 py-2 text-right truncate">{formatearMoneda(totalesFiltrados.saldoReportado)}</td>
+              <td className={`px-2 py-2 text-right truncate ${Math.abs(totalesFiltrados.diferencia) > 0.01 ? 'text-red-600' : 'text-green-600'}`}>
+                {formatearMoneda(totalesFiltrados.diferencia)}
+              </td>
+              <td></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
 
       {/* Info de datos cargados */}
