@@ -300,16 +300,16 @@ export function CuadroComparativo() {
               {agrupaciones
                 .filter(a =>
                   busquedaReasignar === '' ||
-                  a.razonSocial.toLowerCase().includes(busquedaReasignar.toLowerCase())
+                  (a.razonSocial || '').toLowerCase().includes(busquedaReasignar.toLowerCase())
                 )
                 .slice(0, 20)
                 .map(a => (
                   <button
                     key={a.id}
-                    onClick={() => handleReasignar(a.razonSocial)}
+                    onClick={() => handleReasignar(a.razonSocial || '')}
                     className="w-full text-left p-2 hover:bg-blue-50 rounded text-sm"
                   >
-                    {a.razonSocial}
+                    {a.razonSocial || 'Sin nombre'}
                   </button>
                 ))
               }
