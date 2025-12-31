@@ -233,8 +233,8 @@ function AgrupacionItem({
                       if (container) {
                         const buttons = container.querySelectorAll('button')
                         buttons.forEach((btn) => {
-                          const text = btn.textContent?.toLowerCase() || ''
-                          (btn as HTMLElement).style.display = text.includes(filtro) ? 'block' : 'none'
+                          const text = (btn.textContent || '').toLowerCase()
+                          ;(btn as HTMLElement).style.display = text.includes(filtro) ? 'block' : 'none'
                         })
                       }
                     }}
