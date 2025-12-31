@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Download, Filter, Edit2, Check, X, MessageSquare } from 'lucide-react'
+import { Download, ChevronUp, ChevronDown, Edit2, Check, X, MessageSquare, AlertTriangle, Link2, Unlink } from 'lucide-react'
 import { useAuditoriaStore } from '@/stores/auditoriaStore'
-import { FilaCuadroComparativo } from '@/types/auditoria'
+import { FilaCuadroComparativo, SaldoRazonSocial } from '@/types/auditoria'
 
 function formatearMoneda(valor: number): string {
   return new Intl.NumberFormat('es-AR', {
@@ -19,15 +19,23 @@ interface FiltrosState {
   soloDiferencias: boolean
 }
 
+type SortField = 'razonSocial' | 'saldoInicio' | 'debe' | 'haber' | 'saldoCalculado' | 'ajusteAuditoria' | 'saldoReportado' | 'diferencia' | 'estado'
+type SortDirection = 'asc' | 'desc'
+
 export function CuadroComparativo() {
   const [filtros, setFiltros] = useState<FiltrosState>({
     razonSocial: '',
     estado: 'todos',
     soloDiferencias: false,
   })
+  const [sortField, setSortField] = useState<SortField>('razonSocial')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [editandoAjuste, setEditandoAjuste] = useState<string | null>(null)
   const [ajusteTemp, setAjusteTemp] = useState<number>(0)
   const [notaTemp, setNotaTemp] = useState<string>('')
+  const [mostrarSaldosSinAsignar, setMostrarSaldosSinAsignar] = useState(false)
+  const [reasignando, setReasignando] = useState<{tipo: 'inicio' | 'cierre', saldo: SaldoRazonSocial} | null>(null)
+  const [busquedaReasignar, setBusquedaReasignar] = useState('')
 
   const {
     getCuadroComparativo,
@@ -35,35 +43,70 @@ export function CuadroComparativo() {
     setAjusteAuditoria,
     saldosInicio,
     saldosCierre,
+    agrupaciones,
+    reasignarSaldo,
   } = useAuditoriaStore()
 
   const cuadro = getCuadroComparativo()
   const totales = getTotalesCuadro()
 
-  // Filtrar filas
+  // Normalizar para comparación
+  const normalizarRS = (rs: string) => rs.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+
+  // Encontrar saldos sin asignar
+  const saldosSinAsignar = useMemo(() => {
+    const razonesEnCuadro = new Set(cuadro.map(f => normalizarRS(f.razonSocial)))
+
+    const inicioSinAsignar = saldosInicio.filter(s => {
+      const normalizado = normalizarRS(s.razonSocial)
+      return !razonesEnCuadro.has(normalizado) &&
+             !cuadro.some(f => normalizarRS(f.razonSocial).includes(normalizado) || normalizado.includes(normalizarRS(f.razonSocial)))
+    })
+
+    const cierreSinAsignar = saldosCierre.filter(s => {
+      const normalizado = normalizarRS(s.razonSocial)
+      return !razonesEnCuadro.has(normalizado) &&
+             !cuadro.some(f => normalizarRS(f.razonSocial).includes(normalizado) || normalizado.includes(normalizarRS(f.razonSocial)))
+    })
+
+    return { inicio: inicioSinAsignar, cierre: cierreSinAsignar }
+  }, [cuadro, saldosInicio, saldosCierre])
+
+  // Ordenar y filtrar filas
   const filasFiltradas = useMemo(() => {
-    return cuadro.filter(fila => {
-      // Filtro por razón social
+    let resultado = cuadro.filter(fila => {
       if (filtros.razonSocial) {
         const filtroLower = filtros.razonSocial.toLowerCase()
         if (!fila.razonSocial.toLowerCase().includes(filtroLower)) {
           return false
         }
       }
-
-      // Filtro por estado
       if (filtros.estado !== 'todos' && fila.estado !== filtros.estado) {
         return false
       }
-
-      // Filtro solo diferencias
       if (filtros.soloDiferencias && Math.abs(fila.diferencia) < 0.01) {
         return false
       }
-
       return true
     })
-  }, [cuadro, filtros])
+
+    // Ordenar
+    resultado.sort((a, b) => {
+      let valorA: any = a[sortField]
+      let valorB: any = b[sortField]
+
+      if (typeof valorA === 'string') {
+        valorA = valorA.toLowerCase()
+        valorB = valorB.toLowerCase()
+      }
+
+      if (valorA < valorB) return sortDirection === 'asc' ? -1 : 1
+      if (valorA > valorB) return sortDirection === 'asc' ? 1 : -1
+      return 0
+    })
+
+    return resultado
+  }, [cuadro, filtros, sortField, sortDirection])
 
   // Totales filtrados
   const totalesFiltrados = useMemo(() => {
@@ -86,6 +129,22 @@ export function CuadroComparativo() {
     })
   }, [filasFiltradas])
 
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <span className="w-4 h-4" />
+    return sortDirection === 'asc'
+      ? <ChevronUp className="w-4 h-4" />
+      : <ChevronDown className="w-4 h-4" />
+  }
+
   const handleEditarAjuste = (fila: FilaCuadroComparativo) => {
     setEditandoAjuste(fila.razonSocial)
     setAjusteTemp(fila.ajusteAuditoria)
@@ -105,6 +164,14 @@ export function CuadroComparativo() {
     setNotaTemp('')
   }
 
+  const handleReasignar = (razonSocialDestino: string) => {
+    if (reasignando) {
+      reasignarSaldo(reasignando.tipo, reasignando.saldo.razonSocial, razonSocialDestino)
+      setReasignando(null)
+      setBusquedaReasignar('')
+    }
+  }
+
   const getEstadoBadge = (estado: string) => {
     switch (estado) {
       case 'ok':
@@ -118,6 +185,18 @@ export function CuadroComparativo() {
     }
   }
 
+  const HeaderCell = ({ field, label, align = 'right', className = '' }: { field: SortField, label: string, align?: 'left' | 'right' | 'center', className?: string }) => (
+    <th
+      className={`px-4 py-3 font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none ${className}`}
+      onClick={() => handleSort(field)}
+    >
+      <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : ''}`}>
+        <span>{label}</span>
+        <SortIcon field={field} />
+      </div>
+    </th>
+  )
+
   if (cuadro.length === 0) {
     return (
       <div className="bg-white rounded-lg border p-8 text-center text-gray-500">
@@ -128,6 +207,125 @@ export function CuadroComparativo() {
 
   return (
     <div className="space-y-4">
+      {/* Alerta de saldos sin asignar */}
+      {(saldosSinAsignar.inicio.length > 0 || saldosSinAsignar.cierre.length > 0) && (
+        <div
+          className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 cursor-pointer hover:bg-yellow-100"
+          onClick={() => setMostrarSaldosSinAsignar(!mostrarSaldosSinAsignar)}
+        >
+          <div className="flex items-center gap-2 text-yellow-700">
+            <AlertTriangle className="w-5 h-5" />
+            <span className="font-medium">
+              Hay saldos sin asignar: {saldosSinAsignar.inicio.length} de inicio, {saldosSinAsignar.cierre.length} de cierre
+            </span>
+            <span className="text-sm">(click para {mostrarSaldosSinAsignar ? 'ocultar' : 'ver'})</span>
+          </div>
+        </div>
+      )}
+
+      {/* Panel de saldos sin asignar */}
+      {mostrarSaldosSinAsignar && (saldosSinAsignar.inicio.length > 0 || saldosSinAsignar.cierre.length > 0) && (
+        <div className="bg-white rounded-lg border p-4 space-y-4">
+          <h3 className="font-medium text-gray-900">Saldos sin asignar</h3>
+
+          <div className="grid grid-cols-2 gap-4">
+            {/* Saldos inicio sin asignar */}
+            <div>
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Saldos de Inicio ({saldosSinAsignar.inicio.length})</h4>
+              <div className="max-h-48 overflow-y-auto space-y-1">
+                {saldosSinAsignar.inicio.map((s, i) => (
+                  <div key={i} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                    <span className="truncate flex-1" title={s.razonSocial}>{s.razonSocial}</span>
+                    <span className="text-gray-600 mx-2">{formatearMoneda(s.saldo)}</span>
+                    <button
+                      onClick={() => setReasignando({ tipo: 'inicio', saldo: s })}
+                      className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                      title="Asignar a razón social"
+                    >
+                      <Link2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+                {saldosSinAsignar.inicio.length === 0 && (
+                  <p className="text-gray-400 text-sm">Todos asignados</p>
+                )}
+              </div>
+            </div>
+
+            {/* Saldos cierre sin asignar */}
+            <div>
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Saldos de Cierre ({saldosSinAsignar.cierre.length})</h4>
+              <div className="max-h-48 overflow-y-auto space-y-1">
+                {saldosSinAsignar.cierre.map((s, i) => (
+                  <div key={i} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                    <span className="truncate flex-1" title={s.razonSocial}>{s.razonSocial}</span>
+                    <span className="text-gray-600 mx-2">{formatearMoneda(s.saldo)}</span>
+                    <button
+                      onClick={() => setReasignando({ tipo: 'cierre', saldo: s })}
+                      className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                      title="Asignar a razón social"
+                    >
+                      <Link2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+                {saldosSinAsignar.cierre.length === 0 && (
+                  <p className="text-gray-400 text-sm">Todos asignados</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de reasignación */}
+      {reasignando && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full mx-4 max-h-[80vh] flex flex-col">
+            <h3 className="font-medium text-lg mb-4">
+              Asignar saldo de {reasignando.tipo} a razón social
+            </h3>
+            <p className="text-sm text-gray-600 mb-2">
+              <strong>{reasignando.saldo.razonSocial}</strong>: {formatearMoneda(reasignando.saldo.saldo)}
+            </p>
+            <input
+              type="text"
+              placeholder="Buscar razón social destino..."
+              value={busquedaReasignar}
+              onChange={(e) => setBusquedaReasignar(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg mb-4"
+              autoFocus
+            />
+            <div className="flex-1 overflow-y-auto space-y-1 mb-4">
+              {agrupaciones
+                .filter(a =>
+                  busquedaReasignar === '' ||
+                  a.razonSocial.toLowerCase().includes(busquedaReasignar.toLowerCase())
+                )
+                .slice(0, 20)
+                .map(a => (
+                  <button
+                    key={a.id}
+                    onClick={() => handleReasignar(a.razonSocial)}
+                    className="w-full text-left p-2 hover:bg-blue-50 rounded text-sm"
+                  >
+                    {a.razonSocial}
+                  </button>
+                ))
+              }
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => { setReasignando(null); setBusquedaReasignar('') }}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Resumen de totales */}
       <div className="grid grid-cols-5 gap-4">
         <div className="bg-white rounded-lg border p-4">
@@ -166,7 +364,6 @@ export function CuadroComparativo() {
       <div className="bg-white rounded-lg border p-4">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-4 flex-1">
-            {/* Filtro por razón social */}
             <div className="flex-1 max-w-xs">
               <input
                 type="text"
@@ -176,8 +373,6 @@ export function CuadroComparativo() {
                 className="w-full px-3 py-2 border rounded-lg text-sm"
               />
             </div>
-
-            {/* Filtro por estado */}
             <select
               value={filtros.estado}
               onChange={(e) => setFiltros(f => ({ ...f, estado: e.target.value as FiltrosState['estado'] }))}
@@ -188,8 +383,6 @@ export function CuadroComparativo() {
               <option value="diferencia">Solo con diferencia</option>
               <option value="sin_cierre">Sin saldo cierre</option>
             </select>
-
-            {/* Solo diferencias */}
             <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
               <input
                 type="checkbox"
@@ -200,8 +393,6 @@ export function CuadroComparativo() {
               Mostrar solo diferencias
             </label>
           </div>
-
-          {/* Exportar */}
           <button className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm">
             <Download className="w-4 h-4" />
             Exportar Excel
@@ -215,20 +406,20 @@ export function CuadroComparativo() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-700">Razon Social</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-700">Saldo Inicio</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-700">Debe</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-700">Haber</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-700 bg-blue-50">Saldo Calc.</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-700">Ajuste Aud.</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-700">Saldo Report.</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-700">Diferencia</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-700">Estado</th>
+                <HeaderCell field="razonSocial" label="Razon Social" align="left" />
+                <HeaderCell field="saldoInicio" label="Saldo Inicio" />
+                <HeaderCell field="debe" label="Debe" />
+                <HeaderCell field="haber" label="Haber" />
+                <HeaderCell field="saldoCalculado" label="Saldo Calc." className="bg-blue-50" />
+                <HeaderCell field="ajusteAuditoria" label="Ajuste Aud." />
+                <HeaderCell field="saldoReportado" label="Saldo Report." />
+                <HeaderCell field="diferencia" label="Diferencia" />
+                <HeaderCell field="estado" label="Estado" align="center" />
                 <th className="px-4 py-3 text-center font-medium text-gray-700 w-20">Acc.</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filasFiltradas.map((fila, idx) => (
+              {filasFiltradas.map((fila) => (
                 <tr key={fila.razonSocial} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-900 max-w-xs truncate" title={fila.razonSocial}>
                     {fila.razonSocial}
@@ -314,7 +505,6 @@ export function CuadroComparativo() {
                 </tr>
               ))}
             </tbody>
-            {/* Totales */}
             <tfoot className="bg-gray-100 border-t-2 font-medium">
               <tr>
                 <td className="px-4 py-3 text-gray-700">TOTALES</td>
