@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState, useCallback, useMemo } from 'react'
-import { ChevronDown, ChevronRight, GripVertical, Users, Search, X, ArrowRight, Check, Square, CheckSquare, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, GripVertical, Users, Search, X, ArrowRight, Check, Square, CheckSquare, Trash2, ArrowUpDown, ArrowUp, ArrowDown, Filter } from 'lucide-react'
 import { useAuditoriaStore } from '@/stores/auditoriaStore'
 import { AgrupacionMayor, RegistroMayor } from '@/types/auditoria'
 
@@ -11,6 +11,14 @@ function formatearMoneda(valor: number): string {
     currency: 'ARS',
     minimumFractionDigits: 2
   }).format(valor)
+}
+
+type SortField = 'fecha' | 'descripcion' | 'debe' | 'haber'
+type SortDirection = 'asc' | 'desc'
+
+interface SortConfig {
+  field: SortField | null
+  direction: SortDirection
 }
 
 interface AgrupacionItemProps {
@@ -29,6 +37,47 @@ interface AgrupacionItemProps {
   onMoverSeleccionadosASinAsignar: () => void
   onMoverSeleccionadosAOtraAgrupacion: () => void
   todasLasAgrupaciones: AgrupacionMayor[]
+}
+
+// Componente para header de columna ordenable
+function SortableHeader({
+  field,
+  label,
+  sortConfig,
+  onSort,
+  align = 'left'
+}: {
+  field: SortField
+  label: string
+  sortConfig: SortConfig
+  onSort: (field: SortField) => void
+  align?: 'left' | 'right' | 'center'
+}) {
+  const isActive = sortConfig.field === field
+  const alignClass = align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-start'
+
+  return (
+    <th className={`px-3 py-2 font-medium text-gray-600 ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'}`}>
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          onSort(field)
+        }}
+        className={`flex items-center gap-1 hover:text-gray-900 ${alignClass} w-full`}
+      >
+        <span>{label}</span>
+        {isActive ? (
+          sortConfig.direction === 'asc' ? (
+            <ArrowUp className="w-3 h-3" />
+          ) : (
+            <ArrowDown className="w-3 h-3" />
+          )
+        ) : (
+          <ArrowUpDown className="w-3 h-3 opacity-30" />
+        )}
+      </button>
+    </th>
+  )
 }
 
 function AgrupacionItem({
@@ -50,6 +99,10 @@ function AgrupacionItem({
 }: AgrupacionItemProps) {
   const [isDragOver, setIsDragOver] = useState(false)
   const [mostrarModalDestino, setMostrarModalDestino] = useState(false)
+  // Estado para filtrado y ordenamiento
+  const [filtroRegistros, setFiltroRegistros] = useState('')
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ field: null, direction: 'asc' })
+  const [mostrarFiltro, setMostrarFiltro] = useState(false)
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
@@ -73,10 +126,65 @@ function AgrupacionItem({
     onDrop(e)
   }
 
+  const handleSort = (field: SortField) => {
+    setSortConfig(prev => ({
+      field,
+      direction: prev.field === field && prev.direction === 'asc' ? 'desc' : 'asc'
+    }))
+  }
+
   const saldoColor = (agrupacion.saldo || 0) >= 0 ? 'text-green-600' : 'text-red-600'
 
-  // Calcular cuántos registros de esta agrupación están seleccionados
-  const registrosVisibles = agrupacion.registros?.slice(0, 100) || []
+  // Filtrar y ordenar registros
+  const registrosFiltradosYOrdenados = useMemo(() => {
+    let registros = agrupacion.registros || []
+
+    // Filtrar
+    if (filtroRegistros.trim()) {
+      const filtroLower = filtroRegistros.toLowerCase()
+      registros = registros.filter(r => {
+        const descripcion = (r.descripcion || r.concepto || '').toLowerCase()
+        const fecha = r.fecha ? new Date(r.fecha).toLocaleDateString('es-AR') : ''
+        return descripcion.includes(filtroLower) || fecha.includes(filtroLower)
+      })
+    }
+
+    // Ordenar
+    if (sortConfig.field) {
+      registros = [...registros].sort((a, b) => {
+        let valA: string | number = ''
+        let valB: string | number = ''
+
+        switch (sortConfig.field) {
+          case 'fecha':
+            valA = a.fecha || ''
+            valB = b.fecha || ''
+            break
+          case 'descripcion':
+            valA = (a.descripcion || a.concepto || '').toLowerCase()
+            valB = (b.descripcion || b.concepto || '').toLowerCase()
+            break
+          case 'debe':
+            valA = a.debe || 0
+            valB = b.debe || 0
+            break
+          case 'haber':
+            valA = a.haber || 0
+            valB = b.haber || 0
+            break
+        }
+
+        if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1
+        if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1
+        return 0
+      })
+    }
+
+    return registros
+  }, [agrupacion.registros, filtroRegistros, sortConfig])
+
+  // Limitar a 100 para mostrar
+  const registrosVisibles = registrosFiltradosYOrdenados.slice(0, 100)
   const registrosConId = registrosVisibles.filter(r => r.id)
   const cantidadSeleccionados = registrosConId.filter(r => r.id && selectedRegistros.has(r.id)).length
   const todosSeleccionados = registrosConId.length > 0 && cantidadSeleccionados === registrosConId.length
@@ -242,6 +350,54 @@ function AgrupacionItem({
                 </div>
               )}
 
+              {/* Barra de filtro */}
+              <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 border-b">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setMostrarFiltro(!mostrarFiltro)
+                  }}
+                  className={`p-1.5 rounded transition-colors ${mostrarFiltro || filtroRegistros ? 'bg-primary-100 text-primary-700' : 'hover:bg-gray-200 text-gray-500'}`}
+                  title="Filtrar registros"
+                >
+                  <Filter className="w-4 h-4" />
+                </button>
+                {mostrarFiltro && (
+                  <div className="flex-1 flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="Buscar en descripción o fecha..."
+                      value={filtroRegistros}
+                      onChange={(e) => setFiltroRegistros(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex-1 px-2 py-1 text-xs border rounded focus:ring-1 focus:ring-primary-500"
+                      autoFocus
+                    />
+                    {filtroRegistros && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setFiltroRegistros('')
+                        }}
+                        className="p-1 hover:bg-gray-200 rounded"
+                      >
+                        <X className="w-3 h-3 text-gray-500" />
+                      </button>
+                    )}
+                  </div>
+                )}
+                {!mostrarFiltro && filtroRegistros && (
+                  <span className="text-xs text-primary-600">
+                    Filtrado: "{filtroRegistros}" ({registrosFiltradosYOrdenados.length} resultados)
+                  </span>
+                )}
+                {sortConfig.field && (
+                  <span className="text-xs text-gray-500 ml-auto">
+                    Ordenado por {sortConfig.field} ({sortConfig.direction === 'asc' ? '↑' : '↓'})
+                  </span>
+                )}
+              </div>
+
               {/* Tabla de registros */}
               <div className="max-h-80 overflow-auto">
                 <table className="w-full text-sm">
@@ -267,10 +423,10 @@ function AgrupacionItem({
                         </button>
                       </th>
                       <th className="px-2 py-2 text-left font-medium text-gray-600 w-8">#</th>
-                      <th className="px-3 py-2 text-left font-medium text-gray-600">Fecha</th>
-                      <th className="px-3 py-2 text-left font-medium text-gray-600">Descripcion</th>
-                      <th className="px-3 py-2 text-right font-medium text-gray-600">Debe</th>
-                      <th className="px-3 py-2 text-right font-medium text-gray-600">Haber</th>
+                      <SortableHeader field="fecha" label="Fecha" sortConfig={sortConfig} onSort={handleSort} />
+                      <SortableHeader field="descripcion" label="Descripción" sortConfig={sortConfig} onSort={handleSort} />
+                      <SortableHeader field="debe" label="Debe" sortConfig={sortConfig} onSort={handleSort} align="right" />
+                      <SortableHeader field="haber" label="Haber" sortConfig={sortConfig} onSort={handleSort} align="right" />
                       <th className="px-3 py-2 text-center font-medium text-gray-600 w-10">Acc.</th>
                     </tr>
                   </thead>
@@ -331,10 +487,18 @@ function AgrupacionItem({
                         </tr>
                       )
                     })}
-                    {agrupacion.registros.length > 100 && (
+                    {registrosFiltradosYOrdenados.length > 100 && (
                       <tr>
                         <td colSpan={7} className="px-3 py-2 text-center text-gray-500 italic">
-                          ... y {agrupacion.registros.length - 100} registros mas
+                          ... y {registrosFiltradosYOrdenados.length - 100} registros mas
+                          {filtroRegistros && ` (filtrado de ${agrupacion.registros?.length || 0} totales)`}
+                        </td>
+                      </tr>
+                    )}
+                    {registrosFiltradosYOrdenados.length === 0 && filtroRegistros && (
+                      <tr>
+                        <td colSpan={7} className="px-3 py-4 text-center text-gray-500">
+                          No se encontraron registros que coincidan con "{filtroRegistros}"
                         </td>
                       </tr>
                     )}
