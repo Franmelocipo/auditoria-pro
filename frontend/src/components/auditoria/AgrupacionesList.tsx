@@ -1,7 +1,6 @@
 'use client'
 
-import { useRef, useState, useCallback, useMemo } from 'react'
-import { useVirtualizer } from '@tanstack/react-virtual'
+import { useRef, useState, useCallback, useMemo, useEffect } from 'react'
 import { ChevronDown, ChevronRight, GripVertical, Users, Search, X, ArrowRight } from 'lucide-react'
 import { useAuditoriaStore } from '@/stores/auditoriaStore'
 import { AgrupacionMayor, RegistroMayor } from '@/types/auditoria'
@@ -209,6 +208,8 @@ export function AgrupacionesList() {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [filtro, setFiltro] = useState('')
+  const [mostrarTodos, setMostrarTodos] = useState(false)
+  const LIMITE_INICIAL = 50
 
   const {
     agrupaciones,
@@ -219,24 +220,32 @@ export function AgrupacionesList() {
     moverASinAsignar
   } = useAuditoriaStore()
 
+  // Asegurar que cada agrupación tenga un ID único
+  const agrupacionesConId = useMemo(() => {
+    return agrupaciones.map((a, index) => ({
+      ...a,
+      id: a.id || `agrup-${index}-${a.razonSocial?.substring(0, 20) || 'sin-nombre'}`
+    }))
+  }, [agrupaciones])
+
   // Filtrar agrupaciones
   const agrupacionesFiltradas = useMemo(() => {
-    if (!filtro.trim()) return agrupaciones
+    if (!filtro.trim()) return agrupacionesConId
 
     const filtroLower = filtro.toLowerCase()
-    return agrupaciones.filter(a =>
+    return agrupacionesConId.filter(a =>
       a.razonSocial?.toLowerCase().includes(filtroLower) ||
       a.variantes?.some(v => v.toLowerCase().includes(filtroLower))
     )
-  }, [agrupaciones, filtro])
+  }, [agrupacionesConId, filtro])
 
-  // Virtualizer para lista larga
-  const virtualizer = useVirtualizer({
-    count: agrupacionesFiltradas.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 80,
-    overscan: 5,
-  })
+  // Aplicar límite para evitar renderizar miles de items
+  const agrupacionesVisibles = useMemo(() => {
+    if (mostrarTodos || agrupacionesFiltradas.length <= LIMITE_INICIAL) {
+      return agrupacionesFiltradas
+    }
+    return agrupacionesFiltradas.slice(0, LIMITE_INICIAL)
+  }, [agrupacionesFiltradas, mostrarTodos])
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedIds(prev => {
@@ -326,48 +335,39 @@ export function AgrupacionesList() {
         </p>
       )}
 
-      {/* Lista virtualizada */}
+      {/* Lista de agrupaciones */}
       <div
         ref={parentRef}
-        className="h-[600px] overflow-auto"
+        className="max-h-[600px] overflow-auto"
       >
-        <div
-          style={{
-            height: `${virtualizer.getTotalSize()}px`,
-            width: '100%',
-            position: 'relative',
-          }}
-        >
-          {virtualizer.getVirtualItems().map((virtualItem) => {
-            const agrupacion = agrupacionesFiltradas[virtualItem.index]
-            return (
-              <div
-                key={agrupacion.id || virtualItem.index}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  transform: `translateY(${virtualItem.start}px)`,
-                }}
-              >
-                <AgrupacionItem
-                  agrupacion={agrupacion}
-                  isSelected={agrupacionSeleccionada === agrupacion.id}
-                  isExpanded={expandedIds.has(agrupacion.id || '')}
-                  onSelect={() => setAgrupacionSeleccionada(agrupacion.id || null)}
-                  onToggleExpand={() => toggleExpand(agrupacion.id || '')}
-                  onDragStart={(e) => handleDragStart(e, agrupacion)}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => handleDrop(e, agrupacion)}
-                  onMoverRegistroASinAsignar={(registroId) =>
-                    handleMoverRegistroASinAsignar(agrupacion.id || '', registroId)
-                  }
-                />
-              </div>
-            )
-          })}
-        </div>
+        {agrupacionesVisibles.map((agrupacion) => (
+          <AgrupacionItem
+            key={agrupacion.id}
+            agrupacion={agrupacion}
+            isSelected={agrupacionSeleccionada === agrupacion.id}
+            isExpanded={expandedIds.has(agrupacion.id)}
+            onSelect={() => setAgrupacionSeleccionada(agrupacion.id || null)}
+            onToggleExpand={() => toggleExpand(agrupacion.id)}
+            onDragStart={(e) => handleDragStart(e, agrupacion)}
+            onDragOver={handleDragOver}
+            onDrop={(e) => handleDrop(e, agrupacion)}
+            onMoverRegistroASinAsignar={(registroId) =>
+              handleMoverRegistroASinAsignar(agrupacion.id || '', registroId)
+            }
+          />
+        ))}
+
+        {/* Botón para mostrar más */}
+        {!mostrarTodos && agrupacionesFiltradas.length > LIMITE_INICIAL && (
+          <div className="py-4 text-center">
+            <button
+              onClick={() => setMostrarTodos(true)}
+              className="px-4 py-2 bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors"
+            >
+              Mostrar {agrupacionesFiltradas.length - LIMITE_INICIAL} agrupaciones más
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
