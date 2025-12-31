@@ -36,50 +36,52 @@ export function Estadisticas() {
   ]
 
   return (
-    <div className="space-y-4">
-      {/* Cards de estadisticas */}
-      <div className="grid grid-cols-3 gap-4">
-        {stats.map((stat) => (
-          <div key={stat.label} className="bg-white rounded-lg border p-4">
-            <div className="flex items-center gap-3">
+    <div className="bg-white rounded-lg border p-4">
+      {/* Todo en una fila horizontal */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        {/* Estadisticas */}
+        <div className="flex flex-wrap items-center gap-6">
+          {stats.map((stat) => (
+            <div key={stat.label} className="flex items-center gap-3">
               <div className={`p-2 rounded-lg ${stat.color}`}>
                 <stat.icon className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-gray-900">
+                <p className="text-xl font-bold text-gray-900">
                   {stat.value.toLocaleString('es-AR')}
                 </p>
-                <p className="text-sm text-gray-500">{stat.label}</p>
+                <p className="text-xs text-gray-500">{stat.label}</p>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
 
-      {/* Totales */}
-      <div className="bg-white rounded-lg border p-4">
-        <h3 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
-          <DollarSign className="w-4 h-4" />
-          Totales
-        </h3>
-        <div className="grid grid-cols-3 gap-4 text-center">
-          <div>
+        {/* Separador vertical */}
+        <div className="hidden lg:block h-12 w-px bg-gray-200"></div>
+
+        {/* Totales en linea */}
+        <div className="flex flex-wrap items-center gap-6">
+          <div className="flex items-center gap-2">
+            <DollarSign className="w-4 h-4 text-gray-400" />
+            <span className="text-xs text-gray-500 uppercase">Totales:</span>
+          </div>
+          <div className="text-center">
             <p className="text-lg font-semibold text-green-600">
               {formatearMoneda(totales.debe)}
             </p>
-            <p className="text-sm text-gray-500">Total Debe</p>
+            <p className="text-xs text-gray-500">Debe</p>
           </div>
-          <div>
+          <div className="text-center">
             <p className="text-lg font-semibold text-red-600">
               {formatearMoneda(totales.haber)}
             </p>
-            <p className="text-sm text-gray-500">Total Haber</p>
+            <p className="text-xs text-gray-500">Haber</p>
           </div>
-          <div>
-            <p className={`text-lg font-semibold ${totales.saldo >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+          <div className="text-center px-3 py-1 rounded-lg bg-gray-100">
+            <p className={`text-lg font-bold ${totales.saldo >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {formatearMoneda(totales.saldo)}
             </p>
-            <p className="text-sm text-gray-500">Saldo</p>
+            <p className="text-xs text-gray-500">Saldo</p>
           </div>
         </div>
       </div>

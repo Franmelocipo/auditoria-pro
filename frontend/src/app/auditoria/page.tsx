@@ -523,9 +523,26 @@ export default function AuditoriaPage() {
 
             <div className="p-4">
               {tabActiva === 'agrupaciones' ? (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Columna principal - Agrupaciones */}
-                  <div className="lg:col-span-2 space-y-4">
+                <div className="space-y-4">
+                  {/* Panel superior: Estadísticas y Totales */}
+                  <Estadisticas />
+
+                  {/* Panel colapsable: Sin Asignar y Cargar archivo */}
+                  <details className="bg-white rounded-lg border">
+                    <summary className="p-3 cursor-pointer hover:bg-gray-50 font-medium text-gray-700 flex items-center justify-between">
+                      <span>Sin Asignar y Opciones ({sinAsignar.length} registros pendientes)</span>
+                    </summary>
+                    <div className="p-4 border-t grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <SinAsignar />
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <h3 className="font-medium text-gray-700 mb-3">Cargar otro archivo</h3>
+                        <ExcelUploader />
+                      </div>
+                    </div>
+                  </details>
+
+                  {/* Panel principal - Agrupaciones a ancho completo */}
+                  <div className="space-y-4">
                     <div className="flex items-center justify-between mb-2">
                       <h2 className="font-semibold text-gray-900">
                         Agrupaciones por Razon Social
@@ -535,18 +552,6 @@ export default function AuditoriaPage() {
                       </span>
                     </div>
                     <AgrupacionesList />
-                  </div>
-
-                  {/* Sidebar */}
-                  <div className="space-y-4">
-                    <Estadisticas />
-                    <SinAsignar />
-
-                    {/* Cargar otro archivo */}
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <h3 className="font-medium text-gray-700 mb-3">Cargar otro archivo</h3>
-                      <ExcelUploader />
-                    </div>
                   </div>
                 </div>
               ) : (
