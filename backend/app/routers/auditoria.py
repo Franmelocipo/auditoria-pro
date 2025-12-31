@@ -127,6 +127,55 @@ async def obtener_conciliacion(
             if agrupaciones_result.data:
                 conciliacion["agrupaciones"] = agrupaciones_result.data[0].get("agrupaciones", [])
 
+        # Reconstruir registros dentro de agrupaciones si están vacíos
+        registros = conciliacion.get("registros", [])
+        agrupaciones = conciliacion.get("agrupaciones", [])
+
+        if registros and agrupaciones:
+            # Crear mapa de registros por ID para acceso rápido
+            registros_por_id = {r.get("id"): r for r in registros if r.get("id")}
+
+            # Verificar si alguna agrupación tiene registros vacíos pero cantidad > 0
+            necesita_reconstruir = any(
+                a.get("cantidad", 0) > 0 and not a.get("registros")
+                for a in agrupaciones
+            )
+
+            if necesita_reconstruir:
+                # Crear mapa de razón social normalizada a registros
+                from app.services.agrupacion import generar_clave_agrupacion
+
+                registros_por_grupo: dict[str, list] = {}
+                for r in registros:
+                    razon_social = r.get("razon_social", "Sin Asignar")
+                    clave = generar_clave_agrupacion(razon_social)
+                    if clave not in registros_por_grupo:
+                        registros_por_grupo[clave] = []
+                    registros_por_grupo[clave].append(r)
+
+                # Reconstruir registros en cada agrupación
+                for agrupacion in agrupaciones:
+                    if agrupacion.get("cantidad", 0) > 0 and not agrupacion.get("registros"):
+                        razon_social = agrupacion.get("razonSocial", "")
+                        clave = generar_clave_agrupacion(razon_social)
+
+                        # Buscar registros que coincidan
+                        if clave in registros_por_grupo:
+                            agrupacion["registros"] = registros_por_grupo[clave]
+                        else:
+                            # Intentar buscar por variantes
+                            variantes = agrupacion.get("variantes", [razon_social])
+                            registros_encontrados = []
+                            for variante in variantes:
+                                clave_var = generar_clave_agrupacion(variante)
+                                if clave_var in registros_por_grupo:
+                                    registros_encontrados.extend(registros_por_grupo[clave_var])
+                            if registros_encontrados:
+                                agrupacion["registros"] = registros_encontrados
+
+                conciliacion["agrupaciones"] = agrupaciones
+                conciliacion["_registros_reconstruidos"] = True
+
         # Mapear saldos a camelCase para el frontend
         if conciliacion.get("saldos_inicio"):
             conciliacion["saldosInicio"] = conciliacion.pop("saldos_inicio")
