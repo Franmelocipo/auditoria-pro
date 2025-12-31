@@ -72,6 +72,7 @@ interface AuditoriaState {
   fusionarAgrupaciones: (destinoId: string, origenId: string) => void
   moverASinAsignar: (agrupacionId: string, registroId: string) => void
   moverAAgrupacion: (registroId: string, agrupacionId: string) => void
+  reasignarSaldo: (tipo: 'inicio' | 'cierre', razonSocialOrigen: string, razonSocialDestino: string) => void
   limpiar: () => void
 
   // Computed
@@ -295,6 +296,59 @@ export const useAuditoriaStore = create<AuditoriaState>((set, get) => ({
       totales: nuevosTotales,
       estadisticas: nuevasEstadisticas
     })
+  },
+
+  // Reasignar saldo de una razón social a otra
+  reasignarSaldo: (tipo, razonSocialOrigen, razonSocialDestino) => {
+    const { saldosInicio, saldosCierre, agrupaciones } = get()
+
+    if (tipo === 'inicio') {
+      // Encontrar el saldo
+      const saldo = saldosInicio.find(s => s.razonSocial === razonSocialOrigen)
+      if (!saldo) return
+
+      // Actualizar la agrupación destino con el saldo
+      const nuevasAgrupaciones = agrupaciones.map(a => {
+        if (normalizarRazonSocial(a.razonSocial || '') === normalizarRazonSocial(razonSocialDestino)) {
+          return {
+            ...a,
+            saldoInicio: (a.saldoInicio || 0) + saldo.saldo,
+          }
+        }
+        return a
+      })
+
+      // Eliminar el saldo de la lista (ya está asignado a la agrupación)
+      const nuevosSaldosInicio = saldosInicio.filter(s => s.razonSocial !== razonSocialOrigen)
+
+      set({
+        agrupaciones: nuevasAgrupaciones,
+        saldosInicio: nuevosSaldosInicio,
+      })
+    } else {
+      // Encontrar el saldo de cierre
+      const saldo = saldosCierre.find(s => s.razonSocial === razonSocialOrigen)
+      if (!saldo) return
+
+      // Actualizar la agrupación destino con el saldo
+      const nuevasAgrupaciones = agrupaciones.map(a => {
+        if (normalizarRazonSocial(a.razonSocial || '') === normalizarRazonSocial(razonSocialDestino)) {
+          return {
+            ...a,
+            saldoCierre: (a.saldoCierre || 0) + saldo.saldo,
+          }
+        }
+        return a
+      })
+
+      // Eliminar el saldo de la lista (ya está asignado a la agrupación)
+      const nuevosSaldosCierre = saldosCierre.filter(s => s.razonSocial !== razonSocialOrigen)
+
+      set({
+        agrupaciones: nuevasAgrupaciones,
+        saldosCierre: nuevosSaldosCierre,
+      })
+    }
   },
 
   // Limpiar todo
