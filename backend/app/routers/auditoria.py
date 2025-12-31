@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, 
 from fastapi.responses import JSONResponse
 from typing import Optional, Any
 import math
+import httpx
 
 from app.config import get_settings, Settings
 from app.schemas.auditoria import (
@@ -18,14 +19,21 @@ from app.services.procesamiento import (
 
 router = APIRouter()
 
+# Timeout largo para operaciones con muchos datos (120 segundos)
+SUPABASE_TIMEOUT = httpx.Timeout(120.0, connect=10.0)
+
 
 def get_supabase_client(settings: Settings = Depends(get_settings)):
     """Retorna cliente Supabase o None si no está configurado"""
     if not settings.supabase_url or not settings.supabase_key:
         return None
     try:
-        from supabase import create_client
-        return create_client(settings.supabase_url, settings.supabase_key)
+        from supabase import create_client, ClientOptions
+        options = ClientOptions(
+            postgrest_client_timeout=120,
+            storage_client_timeout=120,
+        )
+        return create_client(settings.supabase_url, settings.supabase_key, options=options)
     except Exception as e:
         print(f"Error creando cliente Supabase: {e}")
         return None
@@ -39,8 +47,12 @@ def require_supabase(settings: Settings = Depends(get_settings)):
             detail="Base de datos no configurada. Configure SUPABASE_URL y SUPABASE_KEY."
         )
     try:
-        from supabase import create_client
-        return create_client(settings.supabase_url, settings.supabase_key)
+        from supabase import create_client, ClientOptions
+        options = ClientOptions(
+            postgrest_client_timeout=120,
+            storage_client_timeout=120,
+        )
+        return create_client(settings.supabase_url, settings.supabase_key, options=options)
     except Exception as e:
         raise HTTPException(
             status_code=503,
